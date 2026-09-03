@@ -1,0 +1,16 @@
+{
+  "name": "upwork-job-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Vollna email alerts -> Claude scoring -> Slack approval -> Claude-drafted Upwork proposal. n8n workflow with the logic kept in tested JS modules.",
+  "scripts": {
+    "test": "vitest run",
+    "build": "node scripts/build-workflow.mjs",
+    "eval": "node scripts/run-eval.mjs",
+    "pull": "node scripts/pull-workflow.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
