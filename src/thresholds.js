@@ -13,9 +13,16 @@ export const APPROVAL_TIMEOUT_HOURS = 72;
 /** WF3 fires if fewer than this many jobs were seen in the last 24h. */
 export const MIN_JOBS_PER_DAY = 1;
 
-/** Draft length gate, enforced by the draft eval and stated in the prompt. */
-export const DRAFT_MIN_WORDS = 120;
-export const DRAFT_MAX_WORDS = 350;
+/**
+ * Draft length gate. Widened after reading Dave's real submitted proposals:
+ * they run from a 60-word advisory note to a 900-word answer to a detailed
+ * posting's own numbered questions. The old 120-350 window, and the "shorter
+ * beats longer" instruction beside it, were steering the model away from the
+ * two modes he actually uses on the jobs worth winning. The rules doc decides
+ * which mode fits; these are only the outer bounds.
+ */
+export const DRAFT_MIN_WORDS = 60;
+export const DRAFT_MAX_WORDS = 900;
 
 /** Model choices. Scoring is high-volume and mechanical; drafting is not. */
 export const SCORING_MODEL = 'claude-haiku-4-5';

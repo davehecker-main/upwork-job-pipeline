@@ -179,6 +179,14 @@ export function checkDraft(draft, job, opts = {}) {
 
   if (/^#{1,6}\s|\*\*/m.test(text)) failures.push('contains markdown formatting');
 
+  // A bracketed placeholder has reached a real client before, inside an
+  // otherwise finished proposal. Nothing else catches it: it reads as prose,
+  // the JSON is valid and the length is fine.
+  const placeholder = text.match(/\[[^\]]{12,}\]/);
+  if (placeholder) {
+    failures.push(`unfilled placeholder: ${placeholder[0].slice(0, 48)}`);
+  }
+
   // A draft that trails off mid-sentence reads as a broken tool, and it has
   // happened: a real draft ended "...so I know the gap between" with
   // stop_reason end_turn and valid JSON, so nothing else would have caught it.

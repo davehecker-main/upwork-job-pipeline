@@ -7,3 +7,7 @@ tests/evals/results/
 workflows/.pulled/
 setup/.n8n-ids.json
 setup/state.json
+
+# Real past proposals: personal sales assets, and they name clients.
+# Kept local on purpose - the public repo ships only the README.
+context/examples/real-*.md

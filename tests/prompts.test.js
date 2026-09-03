@@ -252,6 +252,16 @@ describe('checkDraft', () => {
     expect(checkDraft({ proposal: p }, job, opts).some((f) => f.includes('banned opener'))).toBe(true);
   });
 
+  it('fails a draft containing an unfilled bracketed placeholder', () => {
+    const withHole = `You mentioned Airtable. [Describe a specific engagement here with numbers.] ${'word '.repeat(12)}done.`;
+    expect(checkDraft({ proposal: withHole }, job, opts).join(' ')).toMatch(/unfilled placeholder/);
+  });
+
+  it('does not mistake a short bracketed aside for a placeholder', () => {
+    const aside = `You mentioned Airtable [the base] and it matters. ${'word '.repeat(12)}done.`;
+    expect(checkDraft({ proposal: aside }, job, opts).join(' ')).not.toMatch(/unfilled placeholder/);
+  });
+
   it('fails a draft that trails off mid-sentence', () => {
     const trailing = `You mentioned Airtable. ${'word '.repeat(15)}so I know the gap between`;
     expect(checkDraft({ proposal: trailing }, job, opts))
