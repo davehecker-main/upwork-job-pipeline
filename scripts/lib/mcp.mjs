@@ -63,6 +63,8 @@ export function getPosting(jobId, orgUid) {
     '"description" (the complete job description text, not a snippet),',
     '"skills" (array of skill names, or []),',
     '"preferred_qualifications" (object or null),',
+    '"preferred_locations" (array of country names the client prefers',
+    'freelancers to be in, or [] if none are stated),',
     '"questions" (array of screening questions, or []),',
     '"connects_cost" (number or null),',
     '"total_applicants" (number or null).',

@@ -23,6 +23,14 @@ Job data comes from Upwork's marketplace search, so read these carefully:
   client's success. A 3.2 means other freelancers reported a bad experience -
   that is a warning about working with them. Read it together with the review
   count: 4.9 from 2 reviews is far weaker evidence than 4.6 from 150.
+- **A stated location preference is a real strike.** When the job says the
+  client prefers freelancers in particular countries, Upwork treats it as
+  advisory and anyone may apply - but the client wrote it for a reason. Dave
+  bids from the United States. If the preferred locations do not include the
+  US, cap the score below the qualify threshold unless the fit is exceptional
+  and the client's spend history is strong: a proposal costs real Connects, and
+  spending them against a stated preference is usually a bad trade. Say so in
+  the reasoning. This field is absent for most jobs; absence is not a negative.
 - **Spend per hire is the sharpest client signal.** 193 hires at ~$40 per hire
   is a micro-task churn client, however good the rating looks; 31 hires at
   ~$835 per hire is someone who pays for real work. Weigh it above raw hire
@@ -53,6 +61,7 @@ a large one. Weigh spend history over the number in the posting.
   minutes" framing on non-trivial work.
 - Requests to work outside Upwork, or to start unpaid "tests".
 - Extreme competition: a small fixed-price job with 50+ proposals.
+- The client states a preferred freelancer location that is not the United States.
 - A staffing agency reselling the work rather than a client with the problem.
 - Core ask is outside the offer: pure web/mobile app build, design, data entry,
   SEO, content writing, or a stack with no automation or AI-enablement

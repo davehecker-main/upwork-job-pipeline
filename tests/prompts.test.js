@@ -3,7 +3,7 @@ import { buildScoreRequest, parseScoreResponse, validateScore, SCORE_SCHEMA } fr
 import {
   buildDraftRequest, parseDraftResponse, checkDraft, wordCount, distinctiveTerms, withHeader,
 } from '../src/draft-prompt.js';
-import { renderJobCard, renderDraftMessage, renderHealthAlert } from '../src/slack-card.js';
+import { renderJobCard, renderDraftMessage, renderHealthAlert, applyUrl } from '../src/slack-card.js';
 import { normalizeUpworkJob as normalizeJob } from '../src/normalize-upwork.js';
 import {
   SCORING_MODEL, DRAFTING_MODEL, SCORE_THRESHOLD, PROPOSAL_HEADER,
@@ -302,6 +302,19 @@ describe('slack rendering', () => {
     const msg = renderDraftMessage(job, { proposal: 'body', rate_note: '$85/hr' });
     expect(msg).toContain('```\nbody\n```');
     expect(msg).toContain('$85/hr');
+  });
+
+  it('builds the application-form link from the job ciphertext', () => {
+    expect(applyUrl('https://www.upwork.com/jobs/~022095570890031119235'))
+      .toBe('https://www.upwork.com/nx/proposals/job/~022095570890031119235/apply/');
+    expect(applyUrl('https://example.com/no-ciphertext')).toBeNull();
+    expect(applyUrl(null)).toBeNull();
+  });
+
+  it('puts the apply link in the draft message when there is one', () => {
+    const msg = renderDraftMessage({ ...job, apply_url: 'https://x.test/apply' }, { proposal: 'body', rate_note: 'n' });
+    expect(msg).toContain('Apply directly');
+    expect(renderDraftMessage(job, { proposal: 'body', rate_note: 'n' })).not.toContain('Apply directly');
   });
 
   it('health alert names the likely causes in diagnosis order', () => {

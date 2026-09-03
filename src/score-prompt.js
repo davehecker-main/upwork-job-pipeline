@@ -45,6 +45,15 @@ function jobBlock(job) {
   ];
   if (job.engagement) lines.push(`Workload: ${job.engagement}`);
   if (job.skills && job.skills.length) lines.push(`Skills tagged: ${job.skills.join(', ')}`);
+  if (job.preferred_locations && job.preferred_locations.length) {
+    lines.push(`Client prefers freelancers located in: ${job.preferred_locations.join(', ')}`);
+  }
+  if (job.preferred_qualifications) {
+    lines.push(`Client's preferred qualifications: ${JSON.stringify(job.preferred_qualifications)}`);
+  }
+  if (job.screening_questions && job.screening_questions.length) {
+    lines.push(`Screening questions: ${job.screening_questions.length}`);
+  }
   lines.push(
     `Proposals so far: ${job.proposals == null ? 'none yet' : job.proposals}`,
     `Published: ${job.published_date || 'not stated'}`,

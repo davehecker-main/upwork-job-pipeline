@@ -42,8 +42,19 @@ export function renderDraftMessage(job, draft) {
     '```',
     '',
     `💵 ${draft.rate_note}`,
-    `🔗 <${job.url}|Open the posting to submit>`,
-  ].join('\n');
+    `🔗 <${job.url}|Open the posting>`,
+    job.apply_url ? `📝 <${job.apply_url}|Apply directly> — paste the text above` : '',
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * Upwork's application form for a job. Opening it is free; Connects are charged
+ * only on submit, and the same amount whichever route you submit through.
+ * Built from the ~ciphertext, which is what the job URL carries.
+ */
+export function applyUrl(jobUrl) {
+  const m = String(jobUrl || '').match(/~([0-9a-zA-Z]{12,})/);
+  return m ? `https://www.upwork.com/nx/proposals/job/~${m[1]}/apply/` : null;
 }
 
 export function renderHealthAlert({ jobsLast24h, windowHours = 24 }) {

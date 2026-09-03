@@ -16,7 +16,7 @@
 
 import { requireEnv, loadEnv } from './lib/env.mjs';
 import { searchJobs } from './lib/mcp.mjs';
-import { scoreResponse, postCards, loadState } from './lib/pipeline.mjs';
+import { scoreResponse, enrichAndRescore, postCards, loadState } from './lib/pipeline.mjs';
 import { SEARCH_QUERIES, SEARCH_FILTERS } from '../src/thresholds.js';
 
 loadEnv();
@@ -56,17 +56,29 @@ console.log('');
 const result = await scoreResponse({ jobs }, apiKey, { state });
 console.log(`\n${result.qualified.length} passed the threshold · scoring cost $${result.cost.toFixed(4)}`);
 
+if (!result.qualified.length) {
+  console.log(post ? 'nothing to post\n' : '(dry run)\n');
+  process.exit(0);
+}
+
+// Second pass on survivors only: full posting, then score again. A job that
+// passes on a 241-character snippet can fail on the complete picture, and that
+// is far better discovered here than after Connects are spent.
+console.log('\nfetching full postings for the survivors…');
+const survivors = await enrichAndRescore(result.qualified, apiKey, { state: result.state || state });
+console.log(`\n${survivors.length} of ${result.qualified.length} still above threshold after the full read`);
+
 if (!post) {
   console.log('(dry run — pass --post to send cards to Slack)\n');
   process.exit(0);
 }
 
-if (!result.qualified.length) {
+if (!survivors.length) {
   console.log('nothing to post\n');
   process.exit(0);
 }
 
 const token = requireEnv('SLACK_BOT_TOKEN');
 const channel = useTest ? requireEnv('SLACK_TEST_CHANNEL') : requireEnv('SLACK_CHANNEL');
-await postCards(result.qualified, { token, channel, state: result.state || state });
+await postCards(survivors, { token, channel, state: result.state || state });
 console.log('');

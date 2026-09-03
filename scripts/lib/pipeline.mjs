@@ -15,7 +15,7 @@ import { buildScoreRequest, parseScoreResponse } from '../../src/score-prompt.js
 import {
   buildDraftRequest, parseDraftResponse, checkDraft, withHeader,
 } from '../../src/draft-prompt.js';
-import { renderJobCard, renderDraftMessage } from '../../src/slack-card.js';
+import { renderJobCard, renderDraftMessage, applyUrl } from '../../src/slack-card.js';
 import {
   SCORE_THRESHOLD, SCORING_MODEL, SCORING_JSON_MODE, DRAFTING_MODEL, DRAFT_EFFORT,
   DRAFT_MIN_WORDS, DRAFT_MAX_WORDS, PROPOSAL_HEADER,
@@ -108,6 +108,73 @@ export async function scoreResponse(response, apiKey, { state = loadState(), log
   return { qualified, scored: results.length, cost, skipped: all.length - fresh.length, state };
 }
 
+/**
+ * Second pass, on survivors only: fetch the full posting and score again.
+ *
+ * The first pass sees Upwork's ~250-character snippet and no preferred
+ * locations, qualifications or screening questions - those exist only in the
+ * job detail. So a job can pass on partial information and then fail on the
+ * whole picture, which is exactly what should happen before a card asks for
+ * Dave's attention and 20 Connects. Costs one Upwork call and one Haiku call
+ * per survivor, roughly three a day.
+ *
+ * @returns {Array} the jobs still above threshold, carrying their new score
+ */
+export async function enrichAndRescore(qualified, apiKey, { state = loadState(), log = console.log } = {}) {
+  const survivors = [];
+
+  for (const { job, score } of qualified) {
+    let enriched = job;
+    try {
+      const before = (job.description || '').length;
+      const after = await enrichPosting(job.job_id, { state });
+      const rec = get(state, job.job_id);
+      enriched = {
+        ...job,
+        description: rec.description,
+        description_truncated: false,
+        skills: rec.skills || job.skills,
+        preferred_locations: rec.preferred_locations || [],
+        preferred_qualifications: rec.preferred_qualifications || null,
+        screening_questions: rec.screening_questions || [],
+        proposals: rec.proposals ?? job.proposals,
+      };
+      log(`  ${job.title.slice(0, 46)}: posting ${before} -> ${after} chars`);
+    } catch (error) {
+      // A failed detail call must not drop the job - it just gets judged on
+      // what the first pass already saw.
+      log(`  ${job.title.slice(0, 46)}: detail fetch failed (${String(error.message).slice(0, 70)})`);
+      survivors.push({ job, score });
+      continue;
+    }
+
+    try {
+      const res = await callAnthropic(
+        buildScoreRequest(enriched, CONTEXT_PACK, { model: SCORING_MODEL, mode: SCORING_JSON_MODE }),
+        apiKey,
+      );
+      const rescored = parseScoreResponse(res);
+      const passes = rescored.score >= SCORE_THRESHOLD;
+      updateStatus(state, job.job_id, passes ? STATUS.QUALIFIED : STATUS.REJECTED, {
+        score: rescored.score,
+        verdict: rescored.verdict,
+        reasoning: rescored.reasoning,
+        red_flags: rescored.red_flags,
+        score_first_pass: score.score,
+      });
+      const arrow = rescored.score === score.score ? '=' : rescored.score > score.score ? '↑' : '↓';
+      log(`    rescored ${score.score} ${arrow} ${rescored.score}${passes ? '' : ' — dropped below threshold'}`);
+      if (passes) survivors.push({ job: enriched, score: rescored });
+    } catch (error) {
+      log(`    rescoring failed (${String(error.message).slice(0, 70)}) — keeping the first-pass score`);
+      survivors.push({ job: enriched, score });
+    }
+  }
+
+  saveState(state);
+  return survivors;
+}
+
 /** Post one card per qualifying job and record the message timestamp. */
 export async function postCards(qualified, { token, channel, state = loadState(), log = console.log }) {
   for (const { job, score } of qualified) {
@@ -161,6 +228,10 @@ export async function enrichPosting(jobId, { state = loadState() } = {}) {
     description_truncated: false,
     skills: Array.isArray(posting.skills) && posting.skills.length ? posting.skills : rec.skills,
     preferred_qualifications: posting.preferred_qualifications ?? rec.preferred_qualifications ?? null,
+    // Advisory on Upwork's side, but a client naming other regions is a real
+    // strike against a US bid - and it exists ONLY in the job detail, never in
+    // search results, so it has to arrive here.
+    preferred_locations: Array.isArray(posting.preferred_locations) ? posting.preferred_locations : [],
     screening_questions: Array.isArray(posting.questions) ? posting.questions : [],
     connects_cost: posting.connects_cost ?? null,
     proposals: posting.total_applicants ?? rec.proposals ?? null,
@@ -186,6 +257,7 @@ export async function draftFor(jobId, { apiKey, token, state = loadState(), log 
     client_summary: rec.client_summary || '',
     skills: rec.skills || [],
     proposals: rec.proposals ?? null,
+    apply_url: applyUrl(rec.url),
   };
   const score = {
     score: rec.score, verdict: rec.verdict, reasoning: rec.reasoning, red_flags: rec.red_flags || [],
