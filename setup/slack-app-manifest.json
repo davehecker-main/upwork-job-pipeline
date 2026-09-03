@@ -1,0 +1,33 @@
+{
+  "display_information": {
+    "name": "Upwork Pipeline",
+    "description": "Posts qualified Upwork jobs for approval and returns Claude-drafted proposals.",
+    "background_color": "#14a800",
+    "long_description": "Part of the upwork-job-pipeline project. Vollna job alerts are scored by Claude, posted here as a card with Draft proposal / Skip buttons, and the resulting draft is returned in a thread. Nothing is ever submitted to Upwork automatically - every submission is a manual human action."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Upwork Pipeline",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "channels:read",
+        "channels:manage",
+        "files:write"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false,
+    "interactivity": {
+      "is_enabled": false
+    }
+  }
+}

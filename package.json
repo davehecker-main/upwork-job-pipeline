@@ -7,6 +7,9 @@
   "scripts": {
     "test": "vitest run",
     "build": "node scripts/build-workflow.mjs",
+    "verify": "node scripts/verify-creds.mjs",
+    "setup:slack": "node scripts/setup-slack.mjs",
+    "setup:n8n": "node scripts/setup-n8n.mjs",
     "eval": "node scripts/run-eval.mjs",
     "pull": "node scripts/pull-workflow.mjs"
   },

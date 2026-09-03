@@ -129,32 +129,37 @@ WF1 executions) and by the drift check. On n8n Cloud the base URL is your
 instance URL; self-hosted it is `http://localhost:5678`.
 </details>
 
-Then:
+### 2. Fill in `.env` and prove the credentials work
 
 ```bash
-cp .env.example .env    # fill in the four values; .env is gitignored
+cp .env.example .env    # then fill it in; .env is gitignored
 npm install
-./test.sh
+npm run verify          # real login attempt against each service, ~$0.00002
 ```
 
-### 2. Build and import
+`verify` makes an actual Haiku call, an actual IMAP login against the
+`vollna-alerts` mailbox, an actual `auth.test` against Slack, and an actual n8n
+API call. Every failure it reports is far cheaper to read here than inside a
+workflow execution.
+
+### 3. Let the scripts do the wiring
 
 ```bash
-node scripts/check-json-mode.mjs        # settles one live-API question, ~$0.001
-node scripts/build-workflow.mjs \
-  --n8n-base-url https://YOUR.app.n8n.cloud \
-  --slack-channel C0123456789
+npm run setup:slack                       # creates both channels, writes their ids to .env
+node scripts/check-json-mode.mjs          # settles one live-API question, ~$0.001
+npm run build                             # regenerate the artifacts
+npm run setup:n8n -- --dry-run            # show what would happen
+npm run setup:n8n -- --activate           # create credentials + workflows, cross-link, activate
 ```
 
-Import each file in `workflows/` into n8n (**Workflows → ⋯ → Import from
-File**), then in the n8n UI:
+`setup:n8n` creates the four n8n credentials, pushes all three workflows with
+those credentials already attached to the right nodes, gives WF3 WF1's id and
+WF1 the error workflow's id, activates both, and writes the workflow ids back to
+`.env` — which is what turns on the drift check in `./test.sh`. It records ids in
+`setup/.n8n-ids.json` (gitignored) so re-running updates in place instead of
+creating duplicates.
 
-1. Attach the four credentials to the nodes marked `REPLACE_ME`.
-2. In **WF3**, set the `workflowId` query parameter to WF1's id.
-3. In **Settings → Error Workflow**, select `WF-error — Failure ping`.
-4. Fill `N8N_WF1_ID` and `N8N_WF3_ID` in `.env` so the drift check activates.
-
-### 3. Verify end to end
+### 4. Verify end to end
 
 1. `./test.sh` — everything green.
 2. Forward a real Vollna alert to the watched label. Within one IMAP poll a

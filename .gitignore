@@ -5,3 +5,4 @@ node_modules/
 .DS_Store
 tests/evals/results/
 workflows/.pulled/
+setup/.n8n-ids.json
