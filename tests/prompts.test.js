@@ -57,6 +57,13 @@ describe('buildScoreRequest', () => {
     expect(req.tools).toBeUndefined();
   });
 
+  it('omits integer bounds the API rejects, and enforces them in code instead', () => {
+    expect(SCORE_SCHEMA.properties.score.minimum).toBeUndefined();
+    expect(SCORE_SCHEMA.properties.score.maximum).toBeUndefined();
+    expect(SCORE_SCHEMA.properties.score.description).toMatch(/0 to 100/);
+    expect(() => validateScore({ score: 140, verdict: 'qualify' })).toThrow(/out of range/);
+  });
+
   it('emits a strict forced tool in tool mode instead', () => {
     const req = buildScoreRequest(job, ctx, { mode: 'tool' });
     expect(req.output_config).toBeUndefined();

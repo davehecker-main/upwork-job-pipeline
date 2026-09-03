@@ -11,9 +11,12 @@ export const SCORE_SCHEMA = {
   properties: {
     score: {
       type: 'integer',
-      minimum: 0,
-      maximum: 100,
-      description: 'Overall fit and client-quality score.',
+      // No minimum/maximum here: structured outputs reject those keys on an
+      // integer ("For 'integer' type, properties maximum, minimum are not
+      // supported"). The bound is stated in the description and ENFORCED by
+      // validateScore(), which throws rather than clamping - a silently
+      // clamped score would be a wrong decision presented as a real one.
+      description: 'Overall fit and client-quality score, an integer from 0 to 100.',
     },
     verdict: {
       type: 'string',

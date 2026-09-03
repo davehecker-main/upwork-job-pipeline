@@ -62,7 +62,9 @@ export const RATES = {
 };
 
 export function costOf(model, usage) {
-  const rate = RATES[model];
+  // Responses come back with a dated model id ("claude-haiku-4-5-20251001"),
+  // so an exact table lookup silently reports $0.0000 and hides real spend.
+  const rate = RATES[model] || RATES[Object.keys(RATES).find((k) => String(model || '').startsWith(k))];
   if (!rate || !usage) return 0;
   const cacheRead = (usage.cache_read_input_tokens || 0) * rate.input * 0.1;
   const cacheWrite = (usage.cache_creation_input_tokens || 0) * rate.input * 1.25;

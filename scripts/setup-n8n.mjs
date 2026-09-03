@@ -71,16 +71,20 @@ async function api(method, path, body) {
  */
 const credentialSpecs = [
   {
-    key: 'imap',
-    type: 'imap',
-    name: 'Gmail IMAP (app password)',
+    key: 'upwork',
+    type: 'oAuth2Api',
+    name: 'Upwork OAuth2',
     data: () => ({
-      user: requireEnv('IMAP_USER', 'The Google address that receives Vollna alerts'),
-      password: requireEnv('IMAP_PASSWORD', 'The 16-character app password').replace(/\s/g, ''),
-      host: process.env.IMAP_HOST || 'imap.gmail.com',
-      port: Number(process.env.IMAP_PORT || 993),
-      secure: true,
-      allowUnauthorizedCerts: false,
+      grantType: 'authorizationCode',
+      authUrl: 'https://www.upwork.com/ab/account-security/oauth2/authorize',
+      accessTokenUrl: 'https://www.upwork.com/api/v3/oauth2/token',
+      clientId: requireEnv('UPWORK_CLIENT_ID', 'From your app at upwork.com/developer/apps'),
+      clientSecret: requireEnv('UPWORK_CLIENT_SECRET', 'From the same app'),
+      scope: '',
+      authQueryParameters: '',
+      authentication: 'header',
+      // n8n owns the refresh cycle from here. This credential is the one thing
+      // in the pipeline that needs a human click, once, in the n8n UI.
     }),
   },
   {
@@ -91,12 +95,6 @@ const credentialSpecs = [
       name: 'x-api-key',
       value: requireEnv('ANTHROPIC_API_KEY', 'console.anthropic.com → API keys'),
     }),
-  },
-  {
-    key: 'n8nApi',
-    type: 'httpHeaderAuth',
-    name: 'n8n API (X-N8N-API-KEY)',
-    data: () => ({ name: 'X-N8N-API-KEY', value: apiKey }),
   },
   {
     key: 'slack',
@@ -134,14 +132,19 @@ function prepare(wf, { wf1Id, wfErrorId } = {}) {
   const slackChannel = requireEnv('SLACK_CHANNEL', 'Run scripts/setup-slack.mjs first');
 
   for (const node of wf.nodes) {
-    if (node.credentials?.imap) node.credentials.imap = cred('imap');
     if (node.credentials?.slackApi) node.credentials.slackApi = cred('slack');
     if (node.credentials?.httpHeaderAuth) {
-      // Two different Header Auth credentials: the Anthropic key for the
-      // Messages API, the n8n key for the health check's own API call.
-      node.credentials.httpHeaderAuth = node.parameters?.url?.includes('api.anthropic.com')
-        ? cred('anthropic')
-        : cred('n8nApi');
+      // Only the Anthropic key uses Header Auth now - the old n8n-API header
+      // credential went away with the execution-counting health check.
+      node.credentials.httpHeaderAuth = cred('anthropic');
+    }
+    if (node.credentials?.oAuth2Api) node.credentials.oAuth2Api = cred('upwork');
+    // The org id is baked into the generated artifact; patch it if the build
+    // ran without UPWORK_ORG_UID set.
+    for (const h of node.parameters?.headerParameters?.parameters || []) {
+      if (h.name === 'X-Upwork-API-TenantId' && h.value === 'REPLACE_ME_ORG_UID') {
+        h.value = requireEnv('UPWORK_ORG_UID', 'Your freelancer org_uid from list_accounts');
+      }
     }
     if (node.parameters?.channelId?.value === 'REPLACE-ME') {
       node.parameters.channelId = { __rl: true, value: slackChannel, mode: 'id' };

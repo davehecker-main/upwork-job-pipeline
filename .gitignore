@@ -6,3 +6,4 @@ node_modules/
 tests/evals/results/
 workflows/.pulled/
 setup/.n8n-ids.json
+setup/state.json
