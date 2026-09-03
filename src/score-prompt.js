@@ -34,17 +34,32 @@ export const SCORE_SCHEMA = {
 };
 
 function jobBlock(job) {
-  return [
+  const lines = [
     `Title: ${job.title}`,
     `Budget: ${job.budget_display}`,
     `Experience level requested: ${job.experience_level || 'not stated'}`,
-    `Proposals so far: ${job.proposals == null ? 'not stated' : job.proposals}`,
-    `Posted: ${job.posted_at_raw || 'not stated'}`,
+    `Duration: ${job.duration || 'not stated'}`,
+  ];
+  if (job.engagement) lines.push(`Workload: ${job.engagement}`);
+  if (job.skills && job.skills.length) lines.push(`Skills tagged: ${job.skills.join(', ')}`);
+  lines.push(
+    `Proposals so far: ${job.proposals == null ? 'none yet' : job.proposals}`,
+    `Published: ${job.published_date || 'not stated'}`,
     `Client: ${job.client_summary}`,
     '',
     'Description:',
-    job.description || '(no description captured from the alert email)',
-  ].join('\n');
+    job.description || '(no description text available)',
+  );
+  // Say it out loud rather than letting the model infer a vague client from an
+  // API artifact - this is the single most costly misreading available to it.
+  if (job.description_truncated) {
+    lines.push(
+      '',
+      'NOTE: the description above is Upwork\'s search snippet and is cut off.'
+      + ' Do not treat the truncation as vague scope.',
+    );
+  }
+  return lines.join('\n');
 }
 
 /**

@@ -44,9 +44,11 @@ export function renderDraftMessage(job, draft) {
 export function renderHealthAlert({ jobsLast24h, windowHours = 24 }) {
   return [
     '🚨 *Upwork pipeline may be broken*',
-    `No jobs processed in the last ${windowHours}h (count: ${jobsLast24h}).`,
-    'Likely causes, in order: IMAP app password rotated or revoked, Vollna alert',
-    'template changed so the parser returns nothing, or the Vollna filter itself',
-    'stopped emailing. Check the n8n executions list first.',
+    `The daily canary search returned ${jobsLast24h} jobs (expected at least 1).`,
+    'Likely causes, in order: the Upwork OAuth token failed to refresh, the',
+    'GraphQL field names changed under us, or the search query itself now matches',
+    'nothing. Check the n8n executions list, then run',
+    '`node scripts/verify-upwork-graphql.mjs` locally - it names any field the',
+    'API has started rejecting.',
   ].join('\n');
 }

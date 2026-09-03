@@ -13,6 +13,9 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, codeNodeBody } from './lib/inline.mjs';
+// Node PARAMETERS need these too, not just the inlined logic - so the poll
+// interval and approval window come from the same single source as the runtime.
+import { POLL_MINUTES, APPROVAL_TIMEOUT_HOURS } from '../src/thresholds.js';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -22,7 +25,7 @@ const flag = (name, fallback) => {
 
 const N8N_BASE_URL = flag('n8n-base-url', process.env.N8N_BASE_URL || 'https://REPLACE-ME.app.n8n.cloud');
 const SLACK_CHANNEL = flag('slack-channel', process.env.SLACK_CHANNEL || 'REPLACE-ME');
-const MAILBOX = flag('mailbox', 'vollna-alerts');
+const UPWORK_ORG_UID = flag('upwork-org-uid', process.env.UPWORK_ORG_UID || 'REPLACE_ME_ORG_UID');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -70,6 +73,37 @@ function anthropicNode(name, position) {
   });
 }
 
+/**
+ * POST to Upwork's GraphQL API. The body is built by the prior Code node, and
+ * auth is an n8n OAuth2 credential so n8n owns the refresh cycle.
+ */
+function upworkNode(name, position) {
+  return node(name, 'n8n-nodes-base.httpRequest', 4.2, {
+    method: 'POST',
+    url: 'https://api.upwork.com/graphql',
+    authentication: 'genericCredentialType',
+    genericAuthType: 'oAuth2Api',
+    sendHeaders: true,
+    headerParameters: {
+      parameters: [
+        { name: 'X-Upwork-API-TenantId', value: UPWORK_ORG_UID },
+        { name: 'content-type', value: 'application/json' },
+      ],
+    },
+    sendBody: true,
+    specifyBody: 'json',
+    jsonBody: '={{ JSON.stringify($json.requestBody) }}',
+    options: { timeout: 60000 },
+  }, position, {
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 5000,
+    credentials: {
+      oAuth2Api: { id: 'REPLACE_ME', name: 'Upwork OAuth2' },
+    },
+  });
+}
+
 function slackNode(name, position, parameters, extra = {}) {
   return node(name, 'n8n-nodes-base.slack', 2.3, parameters, position, {
     credentials: { slackApi: { id: 'REPLACE_ME', name: 'Upwork Pipeline bot' } },
@@ -100,30 +134,51 @@ function workflow(name, nodes, connections, settings = {}) {
 
 /* ------------------------------------------------------------------- logic */
 
-// The IMAP node's field names have varied across versions, so read defensively
-// rather than pinning one shape and failing silently on upgrade.
-const PARSE_LOGIC = `
+// One search request per configured niche. Upwork's server-side filters do the
+// first pass of the rubric for free - verified payment, proposal ceiling.
+const BUILD_SEARCH_LOGIC = `
+return SEARCH_QUERIES.map((search) => ({
+  json: {
+    search_key: search.key,
+    query: search.query,
+    requestBody: buildSearchRequest(search, SEARCH_FILTERS),
+  },
+}));
+`;
+
+// The signed-in search API has no created_after filter, so recency is narrowed
+// here against a high-water mark kept in the workflow's own static data.
+const NORMALIZE_LOGIC = `
 const state = $getWorkflowStaticData('global');
 prune(state, 120);
 
 const out = [];
-for (const item of $input.all()) {
-  const d = item.json || {};
-  const email = {
-    subject: d.subject || d.Subject || (d.headers && d.headers.subject) || null,
-    text: d.textPlain || d.text || d.textAsHtml || null,
-    html: d.textHtml || d.html || null,
-  };
+for (let i = 0; i < $input.all().length; i += 1) {
+  const response = $input.all()[i].json;
+  const search = $('Build searches').all()[i].json;
 
-  for (const raw of parseVollnaEmail(email)) {
-    const job = normalizeJob(raw);
-    if (!isScorable(job)) continue;          // no usable title: nothing to score
-    if (!markSeen(state, job)) continue;     // dedupe: already known
-    out.push({ json: job });
+  // GraphQL reports field errors in a 200 body - fail loudly, do not score junk.
+  if (response.errors && response.errors.length) {
+    throw new Error('Upwork GraphQL: ' + response.errors.map((e) => e.message).join('; '));
   }
+
+  const mark = state.high_water && state.high_water[search.search_key];
+  const jobs = jobsFromSearchResponse(response)
+    .map(normalizeUpworkJob)
+    .filter(isScorable);
+
+  for (const job of publishedSince(jobs, mark)) {
+    if (!markSeen(state, job)) continue;   // dedupe across polls and niches
+    out.push({ json: { ...job, search_key: search.search_key } });
+  }
+
+  // Advance the mark even when everything was a duplicate, so the window does
+  // not grow without bound.
+  state.high_water = state.high_water || {};
+  state.high_water[search.search_key] = highWaterMark(jobs, mark);
 }
 
-// No new jobs is a normal outcome, not an error. Returning [] ends the branch.
+// No new jobs is the normal outcome of most polls, not an error.
 return out;
 `;
 
@@ -163,6 +218,37 @@ return $input.all().map((item, i) => {
       card: renderJobCard(job, score),
     },
   };
+});
+`;
+
+// Search truncates descriptions to ~250 chars. Fetch the full posting, but
+// only for a job that survived scoring AND the human tap - roughly 3 a day.
+const FETCH_DETAIL_LOGIC = `
+return $input.all().map((item) => ({
+  json: {
+    ...item.json,
+    requestBody: buildJobDetailRequest(item.json.job.job_id),
+  },
+}));
+`;
+
+const MERGE_DETAIL_LOGIC = `
+return $input.all().map((item, i) => {
+  const carried = $('Fetch full posting').all()[i].json;
+  const job = { ...carried.job };
+  const posting = item.json && item.json.data && item.json.data.marketplaceJobPosting;
+
+  // A failed enrichment must not block the draft - it degrades it, and the
+  // prompt is told the description is partial either way.
+  if (posting && posting.description) {
+    job.description = unfence(posting.description);
+    job.description_truncated = false;
+    if (posting.preferredQualifications) {
+      job.preferred_qualifications = posting.preferredQualifications;
+    }
+  }
+
+  return { json: { ...carried, job } };
 });
 `;
 
@@ -249,18 +335,32 @@ const BANNED_OPENERS = (CONTEXT_PACK.proposalRules.match(/^- "(.+)"$/gm) || [])
 `;
 
 const HEALTH_LOGIC = `
-// Counts WF1 executions in the window via the n8n API. Deliberately not read
-// from workflow static data: static data is per-workflow, and an IMAP trigger
-// that never fires would leave WF1's state untouched and this check blind.
-const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-const executions = ($input.first().json.data || []).filter((e) => e.startedAt >= since);
-const jobsLast24h = executions.length;
+// Runs the real search once a day and alerts when it comes back empty or
+// rejected. WF1 succeeding is NOT evidence of health any more: on a schedule
+// trigger it succeeds happily while returning zero jobs, so a broken token,
+// a changed field name or a dead query would look identical to a quiet day.
+const response = $input.first().json;
+
+if (response.errors && response.errors.length) {
+  return [{
+    json: {
+      unhealthy: true,
+      jobsSeen: 0,
+      message: ':rotating_light: *Upwork pipeline is broken*\\nGraphQL rejected the search: '
+        + response.errors.map((e) => e.message).join('; ')
+        + '\\nFix the field names in src/upwork-query.js, rebuild and re-import.',
+    },
+  }];
+}
+
+const jobs = jobsFromSearchResponse(response);
+const unhealthy = jobs.length < MIN_JOBS_PER_DAY;
 
 return [{
   json: {
-    jobsLast24h,
-    unhealthy: jobsLast24h < MIN_JOBS_PER_DAY,
-    message: renderHealthAlert({ jobsLast24h }),
+    jobsSeen: jobs.length,
+    unhealthy,
+    message: renderHealthAlert({ jobsLast24h: jobs.length }),
   },
 }];
 `;
@@ -286,24 +386,24 @@ return [{
 
 function buildWf1() {
   const nodes = [
-    node('Vollna alert (IMAP)', 'n8n-nodes-base.emailReadImap', 2, {
-      mailbox: MAILBOX,
-      postProcessAction: 'read',
-      format: 'resolved',
-      options: {},
-    }, [-260, 300], {
-      credentials: { imap: { id: 'REPLACE_ME', name: 'Gmail IMAP (app password)' } },
-    }),
+    node('Poll Upwork', 'n8n-nodes-base.scheduleTrigger', 1.2, {
+      rule: { interval: [{ field: 'minutes', minutesInterval: POLL_MINUTES }] },
+    }, [-480, 300]),
 
-    codeNode('Parse & dedupe', [-40, 300],
-      ['src/parse-vollna.js', 'src/normalize.js', 'src/state.js'], PARSE_LOGIC),
+    codeNode('Build searches', [-260, 300],
+      ['src/thresholds.js', 'src/upwork-query.js'], BUILD_SEARCH_LOGIC),
 
-    codeNode('Build score request', [180, 300],
+    upworkNode('Upwork: search', [-40, 300]),
+
+    codeNode('Normalize & dedupe', [180, 300],
+      ['src/upwork-query.js', 'src/normalize-upwork.js', 'src/state.js'], NORMALIZE_LOGIC),
+
+    codeNode('Build score request', [400, 300],
       ['src/thresholds.js', 'src/score-prompt.js'], SCORE_REQUEST_LOGIC, { context: true }),
 
-    anthropicNode('Score (Haiku)', [400, 300]),
+    anthropicNode('Score (Haiku)', [620, 300]),
 
-    codeNode('Parse score', [620, 300],
+    codeNode('Parse score', [840, 300],
       ['src/thresholds.js', 'src/score-prompt.js', 'src/state.js', 'src/slack-card.js'],
       PARSE_SCORE_LOGIC),
 
@@ -319,9 +419,9 @@ function buildWf1() {
         combinator: 'and',
       },
       options: {},
-    }, [840, 300]),
+    }, [1060, 300]),
 
-    slackNode('Ask: draft or skip?', [1060, 200], {
+    slackNode('Ask: draft or skip?', [1280, 200], {
       operation: 'sendAndWait',
       select: 'channel',
       channelId: { __rl: true, value: SLACK_CHANNEL, mode: 'id' },
@@ -335,10 +435,10 @@ function buildWf1() {
           buttonDisapprovalStyle: 'danger',
         },
       },
-      options: { limitWaitTime: true, resumeAmount: 72, resumeUnit: 'hours' },
+      options: { limitWaitTime: true, resumeAmount: APPROVAL_TIMEOUT_HOURS, resumeUnit: 'hours' },
     }),
 
-    codeNode('Carry approval', [1280, 200], [], CARRY_APPROVAL_LOGIC),
+    codeNode('Carry approval', [1500, 200], [], CARRY_APPROVAL_LOGIC),
 
     node('Approved?', 'n8n-nodes-base.if', 2.2, {
       conditions: {
@@ -352,18 +452,26 @@ function buildWf1() {
         combinator: 'and',
       },
       options: {},
-    }, [1500, 200]),
+    }, [1720, 200]),
 
-    codeNode('Build draft request', [1720, 100],
+    codeNode('Fetch full posting', [1940, 100],
+      ['src/upwork-query.js'], FETCH_DETAIL_LOGIC),
+
+    upworkNode('Upwork: job detail', [2160, 100]),
+
+    codeNode('Merge full posting', [2380, 100],
+      ['src/normalize-upwork.js'], MERGE_DETAIL_LOGIC),
+
+    codeNode('Build draft request', [2600, 100],
       ['src/thresholds.js', 'src/draft-prompt.js'], DRAFT_REQUEST_LOGIC, { context: true }),
 
-    anthropicNode('Draft (Sonnet)', [1940, 100]),
+    anthropicNode('Draft (Sonnet)', [2820, 100]),
 
-    codeNode('Parse draft', [2160, 100],
+    codeNode('Parse draft', [3040, 100],
       ['src/thresholds.js', 'src/draft-prompt.js', 'src/state.js', 'src/slack-card.js'],
       `${BANNED_OPENERS_SNIPPET}\n${PARSE_DRAFT_LOGIC}`, { context: true }),
 
-    slackNode('Post draft', [2380, 100], {
+    slackNode('Post draft', [3260, 100], {
       select: 'channel',
       channelId: { __rl: true, value: SLACK_CHANNEL, mode: 'id' },
       text: '={{ $json.message }}',
@@ -374,26 +482,31 @@ function buildWf1() {
       },
     }),
 
-    codeNode('Mark skipped', [1720, 320], ['src/state.js'], MARK_SKIPPED_LOGIC),
+    codeNode('Mark skipped', [1940, 320], ['src/state.js'], MARK_SKIPPED_LOGIC),
   ];
 
   const connections = connect([
-    ['Vollna alert (IMAP)', 'Parse & dedupe'],
-    ['Parse & dedupe', 'Build score request'],
+    ['Poll Upwork', 'Build searches'],
+    ['Build searches', 'Upwork: search'],
+    ['Upwork: search', 'Normalize & dedupe'],
+    ['Normalize & dedupe', 'Build score request'],
     ['Build score request', 'Score (Haiku)'],
     ['Score (Haiku)', 'Parse score'],
     ['Parse score', 'Above threshold?'],
     ['Above threshold?', 'Ask: draft or skip?', 0],
     ['Ask: draft or skip?', 'Carry approval'],
     ['Carry approval', 'Approved?'],
-    ['Approved?', 'Build draft request', 0],
+    ['Approved?', 'Fetch full posting', 0],
     ['Approved?', 'Mark skipped', 1],
+    ['Fetch full posting', 'Upwork: job detail'],
+    ['Upwork: job detail', 'Merge full posting'],
+    ['Merge full posting', 'Build draft request'],
     ['Build draft request', 'Draft (Sonnet)'],
     ['Draft (Sonnet)', 'Parse draft'],
     ['Parse draft', 'Post draft'],
   ]);
 
-  return workflow('WF1 — Ingest, Qualify & Draft', nodes, connections, {
+  return workflow('WF1 — Poll, Qualify & Draft', nodes, connections, {
     errorWorkflow: 'REPLACE_ME_WF_ERROR_ID',
   });
 }
@@ -406,26 +519,15 @@ function buildWf3() {
       rule: { interval: [{ field: 'cronExpression', expression: '0 9 * * *' }] },
     }, [-260, 300]),
 
-    node('WF1 executions (n8n API)', 'n8n-nodes-base.httpRequest', 4.2, {
-      method: 'GET',
-      url: `${N8N_BASE_URL}/api/v1/executions`,
-      sendQuery: true,
-      queryParameters: {
-        parameters: [
-          { name: 'workflowId', value: 'REPLACE_ME_WF1_ID' },
-          { name: 'status', value: 'success' },
-          { name: 'limit', value: '100' },
-        ],
-      },
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
-      options: {},
-    }, [-40, 300], {
-      credentials: { httpHeaderAuth: { id: 'REPLACE_ME', name: 'n8n API (X-N8N-API-KEY)' } },
-    }),
+    codeNode('Build canary search', [-40, 300],
+      ['src/thresholds.js', 'src/upwork-query.js'], `
+return [{ json: { requestBody: buildSearchRequest(SEARCH_QUERIES[0], SEARCH_FILTERS) } }];
+`),
 
-    codeNode('Evaluate health', [180, 300],
-      ['src/thresholds.js', 'src/slack-card.js'], HEALTH_LOGIC),
+    upworkNode('Upwork: canary search', [180, 300]),
+
+    codeNode('Evaluate health', [400, 300],
+      ['src/thresholds.js', 'src/upwork-query.js', 'src/slack-card.js'], HEALTH_LOGIC),
 
     node('Unhealthy?', 'n8n-nodes-base.if', 2.2, {
       conditions: {
@@ -439,9 +541,9 @@ function buildWf3() {
         combinator: 'and',
       },
       options: {},
-    }, [400, 300]),
+    }, [620, 300]),
 
-    slackNode('Ping the channel', [620, 220], {
+    slackNode('Ping the channel', [840, 220], {
       select: 'channel',
       channelId: { __rl: true, value: SLACK_CHANNEL, mode: 'id' },
       text: '={{ $json.message }}',
@@ -450,13 +552,16 @@ function buildWf3() {
   ];
 
   const connections = connect([
-    ['Daily 09:00', 'WF1 executions (n8n API)'],
-    ['WF1 executions (n8n API)', 'Evaluate health'],
+    ['Daily 09:00', 'Build canary search'],
+    ['Build canary search', 'Upwork: canary search'],
+    ['Upwork: canary search', 'Evaluate health'],
     ['Evaluate health', 'Unhealthy?'],
     ['Unhealthy?', 'Ping the channel', 0],
   ]);
 
-  return workflow('WF3 — Health check', nodes, connections);
+  return workflow('WF3 — Health check', nodes, connections, {
+    errorWorkflow: 'REPLACE_ME_WF_ERROR_ID',
+  });
 }
 
 /* -------------------------------------------------------------- WF-error */
@@ -485,7 +590,7 @@ const outDir = join(ROOT, 'workflows');
 mkdirSync(outDir, { recursive: true });
 
 const artifacts = [
-  ['wf1.ingest-qualify-draft.json', buildWf1()],
+  ['wf1.poll-qualify-draft.json', buildWf1()],
   ['wf3.health-check.json', buildWf3()],
   ['wf-error.failure-ping.json', buildWfError()],
 ];

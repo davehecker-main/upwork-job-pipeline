@@ -34,11 +34,23 @@ function jobBlock(job, score) {
     `Title: ${job.title}`,
     `Budget: ${job.budget_display}`,
     `Client: ${job.client_summary}`,
-    `Proposals so far: ${job.proposals == null ? 'not stated' : job.proposals}`,
+    `Proposals so far: ${job.proposals == null ? 'none yet' : job.proposals}`,
+  ];
+  if (job.skills && job.skills.length) lines.push(`Skills tagged: ${job.skills.join(', ')}`);
+  lines.push(
     '',
     'Description:',
-    job.description || '(no description captured from the alert email)',
-  ];
+    job.description || '(no description text available)',
+  );
+  // A draft written off a truncated snippet invents specifics. WF1 fetches the
+  // full description before drafting; if that failed, the model must know.
+  if (job.description_truncated) {
+    lines.push(
+      '',
+      'NOTE: this description is truncated. Build your specific observation only'
+      + ' on what is actually visible, and do not invent details of their setup.',
+    );
+  }
   if (score) {
     lines.push(
       '',

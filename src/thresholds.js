@@ -30,3 +30,28 @@ export const DRAFT_EFFORT = 'low';
  * before wiring the workflow - it is a live-API fact, not a guess.
  */
 export const SCORING_JSON_MODE = 'structured';
+
+/**
+ * Upwork marketplace searches WF1 runs on each poll. One entry per niche; the
+ * queries stay here so tuning them is a reviewable diff rather than a click in
+ * the n8n UI.
+ */
+export const SEARCH_QUERIES = [
+  { key: 'n8n', query: 'n8n automation workflow' },
+  { key: 'claude-code', query: 'Claude Code AI coding agent coaching training' },
+];
+
+/**
+ * Server-side filters applied to every search. These cut junk before a single
+ * token is spent - Upwork does the first pass of the rubric for free.
+ * proposals_max keeps out postings that are effectively already closed.
+ */
+export const SEARCH_FILTERS = {
+  verified_payment_only: true,
+  proposals_max: 40,
+  sort: 'recency',
+  limit: 10,
+};
+
+/** How often WF1 polls. 10 minutes is ~288 calls/day, 0.003 req/s average. */
+export const POLL_MINUTES = 10;

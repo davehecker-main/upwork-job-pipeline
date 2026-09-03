@@ -181,7 +181,7 @@ async function upsert(key, file, patch = {}) {
 console.log('\nworkflows');
 // Order matters: WF1 references the error workflow, WF3 references WF1.
 const wfErrorId = await upsert('wfError', 'wf-error.failure-ping.json');
-const wf1Id = await upsert('wf1', 'wf1.ingest-qualify-draft.json', { wfErrorId });
+const wf1Id = await upsert('wf1', 'wf1.poll-qualify-draft.json', { wfErrorId });
 const wf3Id = await upsert('wf3', 'wf3.health-check.json', { wf1Id });
 
 /* --------------------------------------------------------------- activation */

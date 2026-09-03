@@ -2,22 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { buildScoreRequest, parseScoreResponse, validateScore, SCORE_SCHEMA } from '../src/score-prompt.js';
 import { buildDraftRequest, parseDraftResponse, checkDraft, wordCount, distinctiveTerms } from '../src/draft-prompt.js';
 import { renderJobCard, renderDraftMessage, renderHealthAlert } from '../src/slack-card.js';
-import { normalizeJob } from '../src/normalize.js';
+import { normalizeUpworkJob as normalizeJob } from '../src/normalize-upwork.js';
 import { SCORING_MODEL, DRAFTING_MODEL, SCORE_THRESHOLD } from '../src/thresholds.js';
 
 const job = normalizeJob({
-  job_id: '01abc',
+  id: '01abc',
   url: 'https://www.upwork.com/jobs/x_~01abc',
   title: 'n8n workflow to sync Airtable and HubSpot',
   description: 'We need an n8n workflow that watches Airtable and creates HubSpot deals without duplicates.',
-  budget_type: 'hourly',
+  job_type: 'hourly',
   budget_hourly_min: 45,
   budget_hourly_max: 80,
-  client_payment_verified: true,
-  client_total_spent: 47300,
-  client_hires: 31,
-  client_rating: 4.9,
-  proposals: 8,
+  duration: '1 to 3 months',
+  skills: ['n8n', 'API Integration'],
+  proposal_count: 8,
+  published_date: '2026-09-03T19:45:02+0000',
+  client: {
+    verification_status: 'VERIFIED',
+    total_spent: '$47,300.00',
+    total_hires: 31,
+    rating: 4.9,
+    total_reviews: 20,
+  },
 });
 
 const ctx = {
@@ -39,7 +45,7 @@ describe('buildScoreRequest', () => {
     const content = buildScoreRequest(job, ctx).messages[0].content;
     expect(content).toContain('n8n workflow to sync Airtable and HubSpot');
     expect(content).toContain('$45-$80/hr');
-    expect(content).toContain('$47300 total spent');
+    expect(content).toContain('$47300 lifetime spend');
     expect(content).toContain('31 hires');
     expect(content).toContain('Proposals so far: 8');
     expect(content).toContain('without duplicates');
@@ -63,9 +69,23 @@ describe('buildScoreRequest', () => {
     expect(JSON.stringify(buildScoreRequest(job, ctx))).not.toContain('cache_control');
   });
 
-  it('says so out loud when the alert carried no description', () => {
-    const bare = normalizeJob({ job_id: 'x', title: 'A title long enough' });
-    expect(buildScoreRequest(bare, ctx).messages[0].content).toContain('no description captured');
+  it('says so out loud when no description text came back', () => {
+    const bare = normalizeJob({ id: 'x', title: 'A title long enough' });
+    expect(buildScoreRequest(bare, ctx).messages[0].content).toContain('no description text available');
+  });
+
+  it('warns the model that a truncated snippet is not vague scope', () => {
+    const truncated = normalizeJob({
+      id: 'x', title: 'A title long enough', description_snippet: 'We need an n8n flow that ...',
+    });
+    const content = buildScoreRequest(truncated, ctx).messages[0].content;
+    expect(content).toContain('Do not treat the truncation as vague scope');
+  });
+
+  it('passes skills and duration through to the prompt', () => {
+    const content = buildScoreRequest(job, ctx).messages[0].content;
+    expect(content).toContain('Skills tagged: n8n, API Integration');
+    expect(content).toContain('Duration: 1 to 3 months');
   });
 });
 
@@ -219,7 +239,7 @@ describe('slack rendering', () => {
   });
 
   it('handles an untitled posting without rendering "undefined"', () => {
-    const card = renderJobCard(normalizeJob({ job_id: 'x', url: 'u' }), score);
+    const card = renderJobCard(normalizeJob({ id: 'x', url: 'u' }), score);
     expect(card).toContain('untitled posting');
     expect(card).not.toContain('undefined');
   });
@@ -233,7 +253,8 @@ describe('slack rendering', () => {
   it('health alert names the likely causes in diagnosis order', () => {
     const alert = renderHealthAlert({ jobsLast24h: 0 });
     expect(alert).toContain('may be broken');
-    expect(alert).toContain('app password');
-    expect(alert).toContain('template changed');
+    expect(alert).toContain('OAuth token failed to refresh');
+    expect(alert).toContain('GraphQL field names changed');
+    expect(alert).toContain('verify-upwork-graphql');
   });
 });

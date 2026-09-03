@@ -1,13 +1,15 @@
 # Upwork Job Pipeline
 
-Vollna job alerts land in Gmail. Claude scores each one against a written
-rubric. Qualifying jobs arrive in Slack as a card with two buttons. Tap
-**Draft proposal** and Claude writes one in Dave's voice, using his profile and
-past proposals as style anchors. Tap **Skip** and the job is logged and closed.
+Every ten minutes this polls Upwork's marketplace for jobs matching two niches,
+scores each one with Claude against a written rubric, and posts the survivors to
+Slack as a card with two buttons. Tap **Draft proposal** and it fetches the full
+posting, then writes a proposal in Dave's voice using his profile and past
+proposals as style anchors. Tap **Skip** and the job is logged and closed.
 
-**Nothing is ever submitted automatically.** Every proposal is submitted by
-hand on Upwork. That is a deliberate line: auto-bidding is against Upwork's
-terms, and a human decision is the point of the design, not a limitation of it.
+**Nothing is ever submitted automatically.** Every proposal is submitted by hand
+on Upwork. That is a deliberate line, and it is also the actual rule: Upwork
+prohibits automated proposal submission. The Slack approval tap is what keeps
+this pipeline on the right side of it.
 
 This is also the reference implementation of the service it supports —
 *Claude Code + n8n | Reliable Business Automation*. The interesting logic is not
@@ -16,19 +18,32 @@ prompt evals and a one-command test suite.
 
 ```mermaid
 flowchart TD
-    V[Vollna filters<br/>44782 · 44979] -->|email alert| G[(Gmail<br/>label: vollna-alerts)]
-    G -->|IMAP poll| P[Parse &amp; dedupe<br/>src/parse-vollna.js<br/>src/normalize.js<br/>src/state.js]
-    P -->|new jobs only| S[Score<br/>Claude Haiku 4.5<br/>src/score-prompt.js]
-    S --> T{score ≥ 70?}
+    S[Schedule · every 10 min] --> Q[Build searches<br/>2 niches, server-side filters<br/>src/thresholds.js]
+    Q --> U[Upwork GraphQL<br/>marketplaceJobPostings<br/>src/upwork-query.js]
+    U --> N[Normalize · window · dedupe<br/>src/normalize-upwork.js<br/>src/state.js]
+    N -->|new jobs only| C[Score<br/>Claude Haiku 4.5<br/>src/score-prompt.js]
+    C --> T{score ≥ 70?}
     T -->|no| R[log rejected]
-    T -->|yes| C[Slack card<br/>Send &amp; Wait 72h<br/>src/slack-card.js]
-    C --> A{button}
-    A -->|Skip| K[log skipped]
-    A -->|Draft proposal| D[Draft<br/>Claude Sonnet 5<br/>src/draft-prompt.js<br/>+ context/ pack]
-    D --> X[Draft in Slack thread<br/>+ structural checks]
-    X --> H[Dave submits<br/>manually on Upwork]
-    Z[Daily 09:00] --> Y[Health check<br/>no jobs in 24h → Slack ping]
+    T -->|yes| K[Slack card<br/>Send &amp; Wait 72h<br/>src/slack-card.js]
+    K --> A{button}
+    A -->|Skip| X[log skipped]
+    A -->|Draft proposal| F[Fetch full posting<br/>search truncates at ~250 chars]
+    F --> D[Draft<br/>Claude Sonnet 5<br/>src/draft-prompt.js<br/>+ context/ pack]
+    D --> P[Draft in Slack thread<br/>+ structural checks]
+    P --> H[Dave submits<br/>manually on Upwork]
+    Z[Daily 09:00] --> Y[Canary: run the search<br/>empty or rejected → Slack ping]
 ```
+
+**Why Upwork directly and not a job-alert vendor.** This started on Vollna
+email alerts. Real Vollna alerts turn out to carry only title, budget, budget
+type and a tracking link — no description and no client statistics — which
+starves 55% of the scoring rubric. Their RSS feed adds the description but still
+no client data, and their webhook/API tier that does carry it is $120/mo.
+Upwork's own marketplace search returns the description, `total_spent`,
+`total_hires`, `rating`, review count, payment verification and proposal count
+in a single call, for free, with server-side filters that pre-cut the junk. So
+the vendor layer came out entirely. `git log` has the email and RSS
+implementations if you want the archaeology.
 
 ## Why the logic lives in `src/`, not in n8n
 
@@ -50,12 +65,12 @@ truth.
 
 | Area | What it proves |
 |---|---|
-| Parser fixtures | Single alerts, three-job digests, missing budgets, malformed bodies, and garbage all parse to the right fields or to `[]` — never a throw. |
-| Normalizer | Canonical shape, idempotency, and a stable `job_id` across re-sends of the same posting. |
+| Normalizer | Real Upwork response shapes: missing `skills`, absent `proposal_count`, `budget: "0.0"` on hourly, all three `hourly_budget_type` spellings, clients with no rating or hires, country as name *or* ISO-3 code, `$25,875.82` currency strings. Every one of those branches exists because a real result exercised it. |
+| Derived signals | Spend-per-hire — the signal that separates 193 hires at ~$40 each (churn) from 31 at ~$835 (real work) — and the recency window that stands in for the `created_after` filter Upwork's search API does not have. |
 | State | Dedupe, the full `seen → qualified → drafted/skipped` lifecycle, the 24h canary count, and pruning that never deletes a drafted job. |
 | Prompt builders | The right model per call, the rubric in the system prompt, every rubric input present in the user turn, the job kept *out* of the cached prefix, and structured-output schemas. |
 | Response parsing | Structured output, tool-use output, fenced JSON, refusals, and empty responses — the last three throw rather than defaulting a score. |
-| **Generated node bodies** | Every Code node is compiled and executed against stubbed n8n globals, including **both resume paths** (Draft approved / Skip), duplicate alerts, and the no-jobs case. |
+| **Generated node bodies** | All ten Code nodes are compiled and executed against stubbed n8n globals: both resume paths (Draft approved / Skip), a duplicate poll, the recency window, a GraphQL error body, an empty result set, and a *failed* enrichment call that must degrade the draft rather than block it. |
 | Artifact hygiene | No module syntax survives inlining, inlined regions match `src/` byte for byte, no secrets in the artifact, and the approval branch is wired the right way round. |
 
 Plus, opt-in and costing real money:
@@ -88,22 +103,27 @@ generic HTTP Request node so the request body stays owned by this repo.
 </details>
 
 <details>
-<summary><b>Gmail app password (IMAP)</b></summary>
+<summary><b>Upwork OAuth2 app</b></summary>
 
-Chosen over the Gmail OAuth node on purpose: OAuth for a self-hosted n8n needs
-a Google Cloud project, and while its consent screen is in "Testing" Google
-expires the refresh token every 7 days. An app password has neither problem.
+Create an API app at `upwork.com/developer/apps` — free and self-service, no
+approval queue.
 
-1. `myaccount.google.com/security` → enable **2-Step Verification** (required
-   before app passwords exist).
-2. `myaccount.google.com/apppasswords` → create one named `n8n-upwork-pipeline`,
-   copy the 16 characters.
-3. Gmail settings → **Forwarding and POP/IMAP** → **Enable IMAP**.
-4. Gmail → search `from:(vollna.com)` → **Create filter** → apply label
-   `vollna-alerts`. The IMAP trigger watches that label, not the whole inbox.
+- Name: `upwork-job-pipeline`
+- Callback: `https://<your-instance>.app.n8n.cloud/rest/oauth2-credential/callback`
 
-n8n IMAP credential: host `imap.gmail.com`, port `993`, TLS on, user = the full
-address, password = the app password. Set the node's mailbox to `vollna-alerts`.
+Put the key and secret in `.env` as `UPWORK_CLIENT_ID` / `UPWORK_CLIENT_SECRET`,
+and your freelancer `org_uid` as `UPWORK_ORG_UID`. In n8n this becomes a generic
+**OAuth2 API** credential so n8n owns the token refresh; the org id rides as the
+`X-Upwork-API-TenantId` header on every call.
+
+Rate limits are not a constraint here: Upwork allows 10 requests/sec per IP, and
+this pipeline issues roughly 291 calls a day — about 0.003 req/sec.
+
+Separately, Upwork's official **MCP server** (`https://mcp.upwork.com/mcp`) is
+free to all users and is what this repo's fixtures were captured from. It is the
+right tool for interactive work — inspecting a posting, labelling evals — while
+the pipeline itself uses GraphQL, the surface meant for unattended automation.
+
 </details>
 
 <details>
@@ -187,8 +207,9 @@ you. After ~20 real labels, delete the synthetic seed rows.
 
 | Item | Monthly |
 |---|---|
-| Vollna (already paid) | $24 |
-| n8n, self-hosted | $0 |
+| Upwork API + MCP | $0 |
+| Job-alert vendor | **$0 — no longer needed** |
+| n8n | your plan |
 | Claude Haiku 4.5 — scoring | ~$0.50 |
 | Claude Sonnet 5 — drafts, cached context prefix | ~$2 |
 | Eval runs while tuning | ~$1 |
@@ -197,11 +218,14 @@ you. After ~20 real labels, delete the synthetic seed rows.
 
 ## Known limits
 
-- **The parser fixtures are synthetic.** They were written to the *shape* of a
-  Vollna alert, not captured from one. Before trusting a score, save a real
-  alert into `tests/fixtures/`, add its expectations, and retune
-  `FIELD_PATTERNS` in `src/parse-vollna.js`. See `tests/fixtures/README.md`.
-- **The eval labels are synthetic too**, seeded to cover the rubric's decision
+- **The GraphQL field names are unverified.** The response *shape* this pipeline
+  normalizes was captured from Upwork's official MCP server and is verified end
+  to end; the GraphQL selection sets in `src/upwork-query.js` are composed from
+  documented type names and have never been executed, because `api.upwork.com`
+  needs a token. Run `node scripts/verify-upwork-graphql.mjs` before going live
+  — GraphQL names every field it rejects, so a failing run is a to-do list. All
+  fixes land in that one file; nothing downstream consumes the raw response.
+- **The eval labels are synthetic**, seeded to cover the rubric's decision
   boundaries. They grade the prompt's consistency, not its real-world accuracy.
 - **State lives in n8n's workflow static data**, so it is not queryable from
   outside n8n and is intentionally kept small. When Phase 2 needs to tune
@@ -212,18 +236,28 @@ you. After ~20 real labels, delete the synthetic seed rows.
   the IMAP node's field names and the Slack Send-and-Wait options, which have
   moved between node versions. The Code nodes are covered by tests; the wiring
   around them is verified by the manual smoke test above.
-- **Email parsing is inherently fragile.** The v2 fix is a structured webhook
-  source (e.g. Vibeworker Pro, $19/mo) — a single trigger-node swap. Until
-  then, the daily health check is what turns a silent parser failure into a
-  Slack ping.
+- **Hourly rates are invisible.** Upwork's search returns only the *kind* of
+  hourly budget ("client set a range", "platform default range", "no rate
+  stated"), never the numbers. The rubric is told not to speculate about a rate
+  it cannot see.
+- **Token refresh is the standing failure mode**, the same class of problem that
+  ruled out Gmail OAuth for the old email path. If n8n's refresh ever fails, the
+  pipeline goes quiet; the daily canary is what turns that into a Slack ping
+  rather than a silent month.
 
 ## Layout
 
 ```
 src/          logic, unit tested, inlined into Code nodes at build time
+  upwork-query.js      GraphQL requests + adapter to the canonical shape
+  normalize-upwork.js  search result -> canonical job
+  score-prompt.js      rubric prompt (Haiku)
+  draft-prompt.js      proposal prompt (Sonnet), cached context prefix
+  state.js             dedupe, status lifecycle, recency high-water marks
+  thresholds.js        every tunable: threshold, queries, filters, models
 context/      what Claude reads: rubric, profile, proposal rules, style examples
 workflows/    GENERATED n8n JSON - do not hand-edit
-scripts/      build, drift check, eval harness, live-API probe
-tests/        unit tests, parser fixtures, eval labels
+scripts/      build, drift check, eval harness, credential + n8n setup
+tests/        unit tests, real-shape fixtures, eval labels
 test.sh       one entry point
 ```

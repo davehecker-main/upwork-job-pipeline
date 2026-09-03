@@ -29,7 +29,9 @@ const list = async () => {
   do {
     const res = await fetch(
       `https://slack.com/api/conversations.list?${new URLSearchParams({
-        types: 'public_channel,private_channel', limit: '200', ...(cursor ? { cursor } : {}),
+        // public_channel only: listing private channels needs groups:read, and
+        // the two channels this pipeline uses are public by design.
+        types: 'public_channel', limit: '200', ...(cursor ? { cursor } : {}),
       })}`,
       { headers: { authorization: `Bearer ${token}` } },
     );

@@ -1,0 +1,152 @@
+{
+  "_note": "Derived from a real find_jobs action=search response. Field shapes and every edge case are real; ids, urls, titles, snippets and client financials are stand-ins - publishing real clients' spend figures in a public repo is a retention/redistribution problem, and the tests only care about shape.",
+  "client_rating_basis": "client.rating is the average score FREELANCERS gave this client after working with them (total_reviews is how many rated them), not the client's rating of freelancers and not a measure of the client's own success.",
+  "status": "ok",
+  "hasMore": true,
+  "next_cursor": "10",
+  "pageInfo": { "endCursor": "10", "hasNextPage": true },
+  "jobs": [
+    {
+      "id": "1000000000000000001",
+      "title": "n8n Engineer Needed for Workflow Automation",
+      "description_snippet": "<untrusted_participant_content>\nWe are looking for an experienced n8n Automation Engineer to build an automated invoice and payment tracking workflow. The system should process invoice information, update payment statuses, send automated payment reminders, and notify our ...\n</untrusted_participant_content>",
+      "job_type": "fixed",
+      "budget": "50.0",
+      "duration": "1 to 3 months",
+      "experience_level": "INTERMEDIATE",
+      "freelancers_to_hire": 1,
+      "skills": ["Business Process Automation", "API Integration", "Automated Workflow", "Automation"],
+      "created_date": "2026-09-03T20:05:01+0000",
+      "published_date": "2026-09-03T20:06:31+0000",
+      "url": "https://www.upwork.com/jobs/~021000000000000000001",
+      "client": {
+        "country": "ARE",
+        "rating": 5,
+        "total_hires": 193,
+        "total_posted_jobs": 200,
+        "total_reviews": 186,
+        "total_spent": "$7,628.15",
+        "verification_status": "VERIFIED"
+      }
+    },
+    {
+      "id": "1000000000000000002",
+      "title": "Senior n8n Automation Engineer for Ecommerce Pipeline",
+      "description_snippet": "<untrusted_participant_content>\nWe are looking for a senior n8n automation engineer to build a production ecommerce automation system. The core challenge is reliable parallel, long-running workflows...\n</untrusted_participant_content>",
+      "job_type": "fixed",
+      "budget": "6000.0",
+      "duration": "3 to 6 months",
+      "experience_level": "EXPERT",
+      "freelancers_to_hire": 1,
+      "proposal_count": 66,
+      "skills": ["Automation", "JavaScript", "Python", "Selenium"],
+      "created_date": "2026-09-03T16:43:24+0000",
+      "published_date": "2026-09-03T19:45:02+0000",
+      "url": "https://www.upwork.com/jobs/~021000000000000000002",
+      "client": {
+        "country": "Japan",
+        "rating": 4.73,
+        "total_hires": 31,
+        "total_posted_jobs": 69,
+        "total_reviews": 7,
+        "total_spent": "$25,875.82",
+        "verification_status": "VERIFIED"
+      }
+    },
+    {
+      "id": "1000000000000000003",
+      "title": "Automation and API Specialist, Ongoing Hourly Work",
+      "description_snippet": "<untrusted_participant_content>\nWe are a growing digital marketing agency looking for a reliable automation and integration specialist to support ongoing hourly work across client projects...\n</untrusted_participant_content>",
+      "job_type": "hourly",
+      "budget": "0.0",
+      "hourly_budget_type": "client-specified range",
+      "engagement": "Less than 30 hrs/week",
+      "duration": "1 to 3 months",
+      "experience_level": "EXPERT",
+      "freelancers_to_hire": 1,
+      "proposal_count": 129,
+      "skills": ["API Integration", "API", "JavaScript", "Zapier", "Automation"],
+      "created_date": "2026-09-03T18:53:42+0000",
+      "published_date": "2026-09-03T18:54:22+0000",
+      "url": "https://www.upwork.com/jobs/~021000000000000000003",
+      "client": {
+        "country": "Mexico",
+        "rating": 4.86,
+        "total_hires": 221,
+        "total_posted_jobs": 271,
+        "total_reviews": 148,
+        "total_spent": "$81,347.81",
+        "verification_status": "VERIFIED"
+      }
+    },
+    {
+      "id": "1000000000000000004",
+      "title": "WhatsApp Scheduling System Automation",
+      "description_snippet": "<untrusted_participant_content>\n# Project Summary\n\nWe are looking for an experienced *automation specialist* to build a reliable, end-to-end appointment scheduling system...\n</untrusted_participant_content>",
+      "job_type": "fixed",
+      "budget": "300.0",
+      "duration": "Less than 1 month",
+      "experience_level": "INTERMEDIATE",
+      "skills": ["Python", "API Integration", "Automated Workflow", "Make.com", "Airtable"],
+      "created_date": "2026-09-03T18:48:55+0000",
+      "published_date": "2026-09-03T18:50:21+0000",
+      "url": "https://www.upwork.com/jobs/~021000000000000000004",
+      "client": {
+        "country": "Pakistan",
+        "total_spent": "$0.00",
+        "verification_status": "VERIFIED"
+      }
+    },
+    {
+      "id": "1000000000000000005",
+      "title": "Claude coach",
+      "description_snippet": "<untrusted_participant_content>\nHi\n\nI hope you are well\n\nI am looking for someone to teach me about Claude from foundations to advanced - Is this something which you can do?\n\nThanks\n</untrusted_participant_content>",
+      "job_type": "hourly",
+      "budget": "0.0",
+      "hourly_budget_type": "no rate stated",
+      "engagement": "Less than 30 hrs/week",
+      "duration": "Less than 1 month",
+      "experience_level": "ENTRY_LEVEL",
+      "freelancers_to_hire": 1,
+      "proposal_count": 11,
+      "created_date": "2026-08-24T11:58:08+0000",
+      "published_date": "2026-08-24T15:00:52+0000",
+      "url": "https://www.upwork.com/jobs/~021000000000000000005",
+      "client": {
+        "country": "United Kingdom",
+        "rating": 4.73,
+        "total_hires": 9,
+        "total_posted_jobs": 18,
+        "total_reviews": 3,
+        "total_spent": "$822.86",
+        "verification_status": "VERIFIED"
+      }
+    },
+    {
+      "id": "1000000000000000006",
+      "title": "AI Integration Engineer for CRM",
+      "description_snippet": "<untrusted_participant_content>\nWe are seeking an experienced AI integration engineer to work directly with our existing CRM engineering team...\n</untrusted_participant_content>",
+      "job_type": "hourly",
+      "budget": "0.0",
+      "hourly_budget_type": "platform default range",
+      "engagement": "Less than 30 hrs/week",
+      "duration": "1 to 3 months",
+      "experience_level": "INTERMEDIATE",
+      "freelancers_to_hire": 1,
+      "proposal_count": 253,
+      "skills": ["Python", "Artificial Intelligence", "API Integration"],
+      "created_date": "2026-08-24T13:19:28+0000",
+      "published_date": "2026-08-24T13:21:17+0000",
+      "url": "https://www.upwork.com/jobs/~021000000000000000006",
+      "client": {
+        "country": "United States",
+        "rating": 4.63,
+        "total_hires": 96,
+        "total_posted_jobs": 42,
+        "total_reviews": 16,
+        "total_spent": "$38,664.86",
+        "verification_status": "VERIFIED"
+      }
+    }
+  ]
+}
