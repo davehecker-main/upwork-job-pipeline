@@ -21,6 +21,8 @@ import {
   DRAFT_MIN_WORDS, DRAFT_MAX_WORDS, PROPOSAL_HEADER,
 } from '../../src/thresholds.js';
 import { STATUS, hasSeen, markSeen, updateStatus, get, prune } from '../../src/state.js';
+import { getPosting } from './mcp.mjs';
+import { unfence } from '../../src/normalize-upwork.js';
 
 export const STATE_PATH = join(ROOT, 'setup', 'state.json');
 export const CONTEXT_PACK = readContextPack();
@@ -133,6 +135,38 @@ export async function postCards(qualified, { token, channel, state = loadState()
     }
   }
   saveState(state);
+}
+
+/**
+ * Replace a job's truncated snippet with the full posting text, plus whatever
+ * else the detail call carries that a proposal can use - screening questions
+ * and preferred qualifications change what a good proposal says.
+ * @returns {number} the new description length, for logging
+ */
+export async function enrichPosting(jobId, { state = loadState() } = {}) {
+  const rec = get(state, jobId);
+  if (!rec) throw new Error(`unknown job ${jobId}`);
+  const orgUid = process.env.UPWORK_ORG_UID;
+  if (!orgUid) throw new Error('UPWORK_ORG_UID is not set');
+
+  const posting = getPosting(jobId, orgUid);
+  const description = unfence(posting.description || '');
+  if (!description || description.length <= (rec.description || '').length) {
+    // Nothing better came back; leave the record as it was.
+    return (rec.description || '').length;
+  }
+
+  updateStatus(state, jobId, rec.status, {
+    description,
+    description_truncated: false,
+    skills: Array.isArray(posting.skills) && posting.skills.length ? posting.skills : rec.skills,
+    preferred_qualifications: posting.preferred_qualifications ?? rec.preferred_qualifications ?? null,
+    screening_questions: Array.isArray(posting.questions) ? posting.questions : [],
+    connects_cost: posting.connects_cost ?? null,
+    proposals: posting.total_applicants ?? rec.proposals ?? null,
+  });
+  saveState(state);
+  return description.length;
 }
 
 /** Draft a proposal for one approved job and post it in the card's thread. */

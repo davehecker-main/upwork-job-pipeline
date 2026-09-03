@@ -13,7 +13,7 @@
  */
 
 import { requireEnv, loadEnv } from './lib/env.mjs';
-import { loadState, saveState, slackGet, draftFor } from './lib/pipeline.mjs';
+import { loadState, saveState, slackGet, draftFor, enrichPosting } from './lib/pipeline.mjs';
 import { STATUS, updateStatus } from '../src/state.js';
 
 loadEnv();
@@ -82,8 +82,21 @@ for (const [jobId, rec] of waiting) {
     continue;
   }
 
-  console.log(`  ✅ ${label}: drafting…`);
+  console.log(`  ✅ ${label}: approved`);
   if (dryRun) { drafted += 1; continue; }
+
+  // Fetch the full posting BEFORE drafting. Search truncates the description
+  // to ~250 characters, and a proposal written from that is a guess dressed up
+  // as a proposal. This is the one Upwork call made per approved job.
+  try {
+    const before = (state.jobs[jobId].description || '').length;
+    const after = await enrichPosting(jobId, { state });
+    console.log(`     posting fetched: ${before} -> ${after} chars`);
+  } catch (error) {
+    console.log(`     could not fetch the full posting (${String(error.message).slice(0, 90)})`);
+    console.log('     drafting from the search snippet instead');
+  }
+
   try {
     const out = await draftFor(jobId, { apiKey, token, state });
     cost += out.cost;
