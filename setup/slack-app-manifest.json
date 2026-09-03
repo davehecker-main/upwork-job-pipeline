@@ -17,6 +17,7 @@
         "chat:write",
         "chat:write.public",
         "channels:read",
+        "channels:manage",
         "channels:history",
         "reactions:read",
         "reactions:write",

@@ -12,11 +12,13 @@ import { ROOT, readContextPack, bannedOpeners } from './context.mjs';
 import { callAnthropic, mapLimit, costOf } from './anthropic.mjs';
 import { normalizeUpworkJob, isScorable } from '../../src/normalize-upwork.js';
 import { buildScoreRequest, parseScoreResponse } from '../../src/score-prompt.js';
-import { buildDraftRequest, parseDraftResponse, checkDraft } from '../../src/draft-prompt.js';
+import {
+  buildDraftRequest, parseDraftResponse, checkDraft, withHeader,
+} from '../../src/draft-prompt.js';
 import { renderJobCard, renderDraftMessage } from '../../src/slack-card.js';
 import {
   SCORE_THRESHOLD, SCORING_MODEL, SCORING_JSON_MODE, DRAFTING_MODEL, DRAFT_EFFORT,
-  DRAFT_MIN_WORDS, DRAFT_MAX_WORDS,
+  DRAFT_MIN_WORDS, DRAFT_MAX_WORDS, PROPOSAL_HEADER,
 } from '../../src/thresholds.js';
 import { STATUS, hasSeen, markSeen, updateStatus, get, prune } from '../../src/state.js';
 
@@ -164,9 +166,12 @@ export async function draftFor(jobId, { apiKey, token, state = loadState(), log 
   }), apiKey);
 
   const draft = parseDraftResponse(res);
+  // Check the BODY, then ship body-plus-header: the bounds and the banned-opener
+  // rules are about Claude's writing, not the fixed boilerplate above it.
   const failures = checkDraft(draft, job, {
     minWords: DRAFT_MIN_WORDS, maxWords: DRAFT_MAX_WORDS, bannedOpeners: BANNED_OPENERS,
   });
+  draft.proposal = withHeader(draft.proposal, PROPOSAL_HEADER);
 
   let message = renderDraftMessage(job, draft);
   if (failures.length) message += `\n\n:warning: draft checks: ${failures.join('; ')}`;

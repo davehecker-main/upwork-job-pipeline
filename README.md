@@ -88,7 +88,7 @@ it authenticates with the key and bills API credits instead of the subscription.
 
 ## What's tested, offline, for free
 
-`./test.sh` — 102 tests, no API key and no network:
+`./test.sh` — 76 tests, no API key and no network:
 
 | Area | What it proves |
 |---|---|
@@ -97,7 +97,8 @@ it authenticates with the key and bills API credits instead of the subscription.
 | Prompt builders | Right model per call, rubric in the system prompt, every rubric input present in the user turn, the job kept *out* of the cached prefix, and schemas that avoid the keys structured outputs reject. |
 | Response parsing | Structured output, tool-use output, fenced JSON, refusals and empty responses — the last three throw rather than defaulting a score. |
 | State | Dedupe, the full `seen → qualified → drafted/skipped` lifecycle, and pruning that never deletes a drafted job. |
-| Draft checks | Length bounds, banned generic openers, no markdown, and at least one distinctive term from the posting — the "one specific observation" rule, enforced mechanically. |
+| Draft checks | Length bounds, banned generic openers, no markdown, at least one distinctive term from the posting (the "one specific observation" rule, enforced mechanically), and a body that ends in a complete sentence — a real draft once trailed off mid-clause with `stop_reason: end_turn`, so nothing else would have caught it. |
+| Proposal header | The fixed credentials block is prepended in code, never generated: it must be verbatim every time, and it is excluded from the word count so the length bounds still bind Claude's writing. |
 
 Plus, opt-in and costing real money: `./test.sh --eval` replays
 `tests/evals/jobs.jsonl` through the live scoring prompt and prints a confusion
@@ -108,7 +109,8 @@ engagement, a false positive costs a minute.
 
 Everything tunable is in [`src/thresholds.js`](src/thresholds.js): the score
 threshold, the search queries, the server-side filters, both model ids, draft
-length bounds. Everything Claude *reads* is in [`context/`](context/) — rubric,
+length bounds, drafting effort, and `PROPOSAL_HEADER` — the fixed credentials
+block that opens every proposal. Everything Claude *reads* is in [`context/`](context/) — rubric,
 profile, proposal rules, style examples — editable without touching code.
 
 The loop that matters: every card you disagree with is a labelling opportunity.
@@ -135,8 +137,12 @@ the eval, adjust the rubric until it agrees with you.
 - **Discovery needs an authenticated Claude Code MCP connection.** If the token
   expires, every search fails at once and `poll.mjs` says so and exits non-zero
   — re-authenticate with `/mcp` in an interactive session.
-- **Scheduling is local cron**, so it runs only while the machine is awake.
-  A 24/7 host would need Claude Code installed and authenticated there.
+- **It needs a host with Claude Code authenticated.** Discovery shells out to
+  `claude -p`, and the Upwork MCP token lives in that machine's credential
+  store. The intended home is the 24/7 micro PC: install Node and Claude Code,
+  authenticate the MCP once interactively, then schedule the two scripts. Any
+  always-on machine works; what does not work is a runner that cannot hold an
+  interactive OAuth session, so GitHub Actions and a bare VPS are out.
 - **Hourly rates are invisible.** Upwork's search returns only the *kind* of
   hourly budget ("client set a range", "platform default range", "no rate
   stated"), never the numbers, and the rubric is told not to speculate.

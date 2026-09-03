@@ -88,6 +88,11 @@ export function buildDraftRequest(job, ctx, opts = {}) {
     '',
     `Length: ${minWords}-${maxWords} words.`,
     '',
+    'A fixed credentials header (job success, Expert-Vetted, certifications) is',
+    'prepended to your text automatically. Do not write one, do not repeat those',
+    'claims, and do not open by referring to them - start with the specific',
+    'observation about this posting.',
+    '',
     examples.length
       ? `# Style examples\n\nImitate the voice of these, not their content.\n\n${examples
           .map((e, i) => `## Example ${i + 1}\n\n${e}`)
@@ -137,6 +142,16 @@ export function parseDraftResponse(response) {
   };
 }
 
+/**
+ * The proposal as it will be pasted into Upwork: fixed header, blank line,
+ * then the body Claude wrote. Kept separate from the body everywhere else so
+ * word counts and structural checks apply to the writing, not the boilerplate.
+ */
+export function withHeader(proposal, header) {
+  if (!header) return String(proposal || '').trim();
+  return `${header}\n\n${String(proposal || '').trim()}`;
+}
+
 export function wordCount(text) {
   return String(text || '').trim().split(/\s+/).filter(Boolean).length;
 }
@@ -163,6 +178,13 @@ export function checkDraft(draft, job, opts = {}) {
   }
 
   if (/^#{1,6}\s|\*\*/m.test(text)) failures.push('contains markdown formatting');
+
+  // A draft that trails off mid-sentence reads as a broken tool, and it has
+  // happened: a real draft ended "...so I know the gap between" with
+  // stop_reason end_turn and valid JSON, so nothing else would have caught it.
+  if (text.trim() && !/[.!?"')\]]$/.test(text.trim())) {
+    failures.push('does not end in a complete sentence');
+  }
 
   // The "one specific observation" rule, checked mechanically: the proposal
   // must reuse a distinctive term from the posting.

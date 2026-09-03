@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { buildScoreRequest, parseScoreResponse, validateScore, SCORE_SCHEMA } from '../src/score-prompt.js';
-import { buildDraftRequest, parseDraftResponse, checkDraft, wordCount, distinctiveTerms } from '../src/draft-prompt.js';
+import {
+  buildDraftRequest, parseDraftResponse, checkDraft, wordCount, distinctiveTerms, withHeader,
+} from '../src/draft-prompt.js';
 import { renderJobCard, renderDraftMessage, renderHealthAlert } from '../src/slack-card.js';
 import { normalizeUpworkJob as normalizeJob } from '../src/normalize-upwork.js';
-import { SCORING_MODEL, DRAFTING_MODEL, SCORE_THRESHOLD } from '../src/thresholds.js';
+import {
+  SCORING_MODEL, DRAFTING_MODEL, SCORE_THRESHOLD, PROPOSAL_HEADER,
+} from '../src/thresholds.js';
 
 const job = normalizeJob({
   id: '01abc',
@@ -172,6 +176,41 @@ describe('buildDraftRequest', () => {
   });
 });
 
+describe('the fixed proposal header', () => {
+  it('carries the three credential lines verbatim', () => {
+    expect(PROPOSAL_HEADER).toContain('100% Job Success & 5 Star Feedback');
+    expect(PROPOSAL_HEADER).toContain('Expert-Vetted (Top 1% Of Upwork)');
+    expect(PROPOSAL_HEADER).toContain('n8n Expert, Claude Certified');
+    expect(PROPOSAL_HEADER.split('\n')).toHaveLength(3);
+  });
+
+  it('sits above the body, separated by a blank line', () => {
+    const out = withHeader('The body starts here.', PROPOSAL_HEADER);
+    expect(out.startsWith(PROPOSAL_HEADER)).toBe(true);
+    expect(out).toContain('\n\nThe body starts here.');
+  });
+
+  it('is a no-op when no header is configured', () => {
+    expect(withHeader('  body  ', '')).toBe('body');
+    expect(withHeader('body', null)).toBe('body');
+  });
+
+  it('tells the model not to write its own header', () => {
+    const prefix = buildDraftRequest(job, ctx).system[0].text;
+    expect(prefix).toContain('prepended to your text automatically');
+    expect(prefix).toContain('Do not write one');
+  });
+
+  it('is excluded from the word count, so the bounds still bind the writing', () => {
+    const body = `Airtable. ${'word '.repeat(15)}done.`;
+    const withIt = withHeader(body, PROPOSAL_HEADER);
+    expect(wordCount(withIt)).toBeGreaterThan(wordCount(body));
+    // checkDraft is always given the body, never the assembled text.
+    expect(checkDraft({ proposal: body }, job, { minWords: 10, maxWords: 40, bannedOpeners: [] }))
+      .toEqual([]);
+  });
+});
+
 describe('parseDraftResponse', () => {
   it('returns the three fields, trimmed', () => {
     const payload = { proposal: '  text  ', specific_observation: 'Airtable', rate_note: ' $85/hr ' };
@@ -192,7 +231,7 @@ describe('parseDraftResponse', () => {
 
 describe('checkDraft', () => {
   const opts = { minWords: 10, maxWords: 40, bannedOpeners: ['I hope this message finds you well'] };
-  const body = (n) => Array.from({ length: n }, () => 'word').join(' ');
+  const body = (n) => `${Array.from({ length: n }, () => 'word').join(' ')}.`;
 
   it('passes a draft that reuses a distinctive term from the posting', () => {
     expect(checkDraft({ proposal: `You mentioned Airtable. ${body(15)}` }, job, opts)).toEqual([]);
@@ -211,6 +250,14 @@ describe('checkDraft', () => {
   it('fails a banned opener even with correct capitalisation changed', () => {
     const p = `i hope this message finds you well. Airtable ${body(15)}`;
     expect(checkDraft({ proposal: p }, job, opts).some((f) => f.includes('banned opener'))).toBe(true);
+  });
+
+  it('fails a draft that trails off mid-sentence', () => {
+    const trailing = `You mentioned Airtable. ${'word '.repeat(15)}so I know the gap between`;
+    expect(checkDraft({ proposal: trailing }, job, opts))
+      .toContain('does not end in a complete sentence');
+    expect(checkDraft({ proposal: `Airtable ${'word '.repeat(15)}done.` }, job, opts))
+      .not.toContain('does not end in a complete sentence');
   });
 
   it('fails markdown formatting, which Upwork renders literally', () => {

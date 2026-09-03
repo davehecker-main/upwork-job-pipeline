@@ -27,7 +27,12 @@ export function renderJobCard(job, score) {
   return lines.join('\n');
 }
 
-/** The draft, posted as a threaded reply so the card stays scannable. */
+/**
+ * The draft, posted as a threaded reply so the card stays scannable.
+ * `draft.proposal` is expected to already carry the fixed header - the code
+ * block must contain exactly what gets pasted into Upwork, nothing added or
+ * withheld at render time.
+ */
 export function renderDraftMessage(job, draft) {
   return [
     `*Draft proposal — ${job.title || 'untitled posting'}*`,
