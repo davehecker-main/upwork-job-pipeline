@@ -1,7 +1,7 @@
 /** Minimal .env reader. Avoids a dependency for four variables. */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT } from './inline.mjs';
+import { ROOT } from './context.mjs';
 
 export function loadEnv() {
   const path = join(ROOT, '.env');

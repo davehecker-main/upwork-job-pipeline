@@ -49,54 +49,6 @@ if (!env.ANTHROPIC_API_KEY) {
   }
 }
 
-/* ------------------------------------------------------------------ IMAP */
-
-console.log('\nGmail IMAP');
-if (!env.IMAP_USER || !env.IMAP_PASSWORD) {
-  skip('not set', 'IMAP_USER / IMAP_PASSWORD (the 16-char app password)');
-} else {
-  // No IMAP client in the dependency-free JS here; python3's imaplib is
-  // already on macOS and is the shortest honest path to a real login test.
-  const py = `
-import imaplib, sys
-try:
-    m = imaplib.IMAP4_SSL(${JSON.stringify(env.IMAP_HOST || 'imap.gmail.com')}, ${Number(env.IMAP_PORT || 993)})
-    m.login(sys.argv[1], sys.argv[2])
-    boxes = [b.decode().split(' "/" ')[-1].strip('"') for b in (m.list()[1] or [])]
-    mailbox = sys.argv[3]
-    status, data = m.select(mailbox, readonly=True)
-    if status != 'OK':
-        print('MAILBOX_MISSING|' + '|'.join(boxes[:40]))
-    else:
-        print('OK|' + data[0].decode() + '|' + '|'.join(boxes[:40]))
-    m.logout()
-except imaplib.IMAP4.error as e:
-    print('AUTH_FAIL|' + str(e))
-except Exception as e:
-    print('ERROR|' + str(e))
-`;
-  try {
-    const mailbox = env.IMAP_MAILBOX || 'vollna-alerts';
-    const out = execFileSync('python3', ['-c', py, env.IMAP_USER, env.IMAP_PASSWORD.replace(/\s/g, ''), mailbox], {
-      encoding: 'utf8', timeout: 30000,
-    }).trim();
-    const [status, ...rest] = out.split('|');
-    if (status === 'OK') {
-      ok('login works', `mailbox "${mailbox}" has ${rest[0]} messages`);
-      if (rest[0] === '0') console.log('     note: no messages yet — forward a Vollna alert into that label to smoke test');
-    } else if (status === 'MAILBOX_MISSING') {
-      bad(`mailbox "${mailbox}" not found`, `available: ${rest.filter(Boolean).slice(0, 8).join(', ')}`);
-      console.log('     fix: Gmail → search from:(vollna.com) → Create filter → apply label vollna-alerts');
-    } else if (status === 'AUTH_FAIL') {
-      bad('login rejected', 'app password wrong, or IMAP not enabled in Gmail settings');
-    } else {
-      bad('error', rest.join('|').slice(0, 200));
-    }
-  } catch (e) {
-    bad('could not run the IMAP check', e.message.slice(0, 200));
-  }
-}
-
 /* ----------------------------------------------------------------- Slack */
 
 console.log('\nSlack bot token');
@@ -131,28 +83,26 @@ if (!env.SLACK_BOT_TOKEN) {
   }
 }
 
-/* ------------------------------------------------------------------- n8n */
+/* ------------------------------------------------------- Upwork via Claude */
 
-console.log('\nn8n API');
-if (!env.N8N_BASE_URL || !env.N8N_API_KEY) {
-  skip('not set', 'N8N_BASE_URL / N8N_API_KEY (Settings → n8n API)');
-} else {
-  try {
-    const res = await fetch(`${env.N8N_BASE_URL.replace(/\/$/, '')}/api/v1/workflows?limit=1`, {
-      headers: { 'X-N8N-API-KEY': env.N8N_API_KEY, accept: 'application/json' },
-    });
-    if (res.ok) {
-      const body = await res.json();
-      ok('API reachable', `${(body.data || []).length ? 'existing workflows found' : 'no workflows yet'}`);
-    } else if (res.status === 401) {
-      bad('API key rejected', 'regenerate it under Settings → n8n API');
-    } else {
-      bad(`HTTP ${res.status}`, (await res.text()).slice(0, 200));
-    }
-  } catch (e) {
-    bad('unreachable', `${e.message} — is N8N_BASE_URL right, and the instance running?`);
+console.log('\nUpwork MCP (through Claude Code)');
+try {
+  const { execFileSync } = await import('node:child_process');
+  const out = execFileSync('claude', ['mcp', 'list'], { encoding: 'utf8', timeout: 60000 });
+  const line = out.split('\n').find((l) => l.trim().startsWith('upwork:'));
+  if (!line) {
+    bad('not configured', 'claude mcp add --scope user --transport http upwork https://mcp.upwork.com/mcp');
+  } else if (/needs authentication/i.test(line)) {
+    bad('not authenticated', 'run `claude`, then /mcp -> upwork -> Authenticate');
+  } else {
+    ok('connected', line.trim().slice(0, 80));
   }
+} catch (e) {
+  bad('could not run `claude mcp list`', String(e.message).slice(0, 120));
 }
+
+if (!env.UPWORK_ORG_UID) skip('UPWORK_ORG_UID not set', 'your freelancer org_uid');
+else ok('UPWORK_ORG_UID set', env.UPWORK_ORG_UID);
 
 console.log(failures ? `\n${failures} credential check(s) failed.\n` : '\nAll configured credentials work.\n');
 process.exit(failures ? 1 : 0);

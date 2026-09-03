@@ -8,7 +8,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT } from './lib/inline.mjs';
+import { ROOT } from './lib/context.mjs';
 import { requireEnv, loadEnv } from './lib/env.mjs';
 
 loadEnv();

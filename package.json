@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Vollna email alerts -> Claude scoring -> Slack approval -> Claude-drafted Upwork proposal. n8n workflow with the logic kept in tested JS modules.",
+  "description": "Polls Upwork through its official MCP server, scores jobs with Claude against a written rubric, posts the survivors to Slack, and drafts a proposal for the ones you approve. Nothing auto-submits.",
   "scripts": {
     "test": "vitest run",
-    "build": "node scripts/build-workflow.mjs",
     "verify": "node scripts/verify-creds.mjs",
     "setup:slack": "node scripts/setup-slack.mjs",
-    "setup:n8n": "node scripts/setup-n8n.mjs",
-    "eval": "node scripts/run-eval.mjs",
-    "pull": "node scripts/pull-workflow.mjs"
+    "poll": "node scripts/poll.mjs",
+    "run": "node scripts/run-once.mjs",
+    "approvals": "node scripts/check-approvals.mjs",
+    "eval": "node scripts/run-eval.mjs"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

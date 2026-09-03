@@ -16,11 +16,10 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT } from './lib/inline.mjs';
+import { ROOT, readContextPack, bannedOpeners } from './lib/context.mjs';
 import { requireEnv } from './lib/env.mjs';
 import { callAnthropic, mapLimit, costOf } from './lib/anthropic.mjs';
-import { readContextPack } from './lib/inline.mjs';
-import { normalizeJob } from '../src/normalize.js';
+import { normalizeUpworkJob as normalizeJob } from '../src/normalize-upwork.js';
 import { buildScoreRequest, parseScoreResponse } from '../src/score-prompt.js';
 import { buildDraftRequest, parseDraftResponse, checkDraft } from '../src/draft-prompt.js';
 import {
@@ -39,12 +38,8 @@ const CONCURRENCY = Number(val('concurrency', 5));
 
 // The context pack is read through the same helper the build script uses, so
 // the eval scores the prompt production will actually send.
-const CONTEXT_PACK = JSON.parse(
-  readContextPack().match(/const CONTEXT_PACK = ([\s\S]*);/)[1],
-);
-
-const BANNED_OPENERS = (CONTEXT_PACK.proposalRules.match(/^- "(.+)"$/gm) || [])
-  .map((l) => l.replace(/^- "/, '').replace(/"$/, ''));
+const CONTEXT_PACK = readContextPack();
+const BANNED_OPENERS = bannedOpeners(CONTEXT_PACK);
 
 const rows = readFileSync(join(ROOT, 'tests/evals/jobs.jsonl'), 'utf8')
   .trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
