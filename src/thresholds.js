@@ -79,5 +79,7 @@ export const POLL_MINUTES = 10;
 export const PROPOSAL_HEADER = [
   '\u2705 100% Job Success & 5 Star Feedback \u2B50\u2B50\u2B50\u2B50\u2B50',
   '\u2705 Expert-Vetted (Top 1% Of Upwork)',
-  '\u2705 n8n Expert, Claude Certified',
+  // The double space in "Claude  Certified" is Dave's, verbatim from his own
+  // submitted proposals. It is not a typo to clean up.
+  '\u2705 n8n Expert, Claude  Certified',
 ].join('\n');

@@ -180,7 +180,8 @@ describe('the fixed proposal header', () => {
   it('carries the three credential lines verbatim', () => {
     expect(PROPOSAL_HEADER).toContain('100% Job Success & 5 Star Feedback');
     expect(PROPOSAL_HEADER).toContain('Expert-Vetted (Top 1% Of Upwork)');
-    expect(PROPOSAL_HEADER).toContain('n8n Expert, Claude Certified');
+    // Verbatim, double space included - it is Dave's text, not a typo.
+    expect(PROPOSAL_HEADER).toContain('n8n Expert, Claude  Certified');
     expect(PROPOSAL_HEADER.split('\n')).toHaveLength(3);
   });
 
