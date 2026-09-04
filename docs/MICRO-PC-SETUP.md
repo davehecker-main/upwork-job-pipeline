@@ -98,24 +98,31 @@ crontab -e
 Use `which node` to confirm the path. Cron gets a minimal environment, so an
 absolute path matters.
 
-**WSL caveat that will bite you:** WSL does not run cron on boot by default, and
-it shuts down when no session is open. Fix both:
+**Keeping it running — three things, all learned the hard way:**
 
-```bash
-sudo systemctl enable cron        # if systemd is enabled in your WSL
-```
+1. **WSL does not start cron at boot.** `/etc/wsl.conf` needs both
+   `systemd=true` and `command="service cron start"` under `[boot]`.
+2. **WSL distros are per-Windows-user.** A Task Scheduler entry running as
+   SYSTEM starts SYSTEM's own separate distro and does nothing for yours - cron
+   keeps not running and nothing reports an error. The keepalive task must run
+   as the logged-in account:
 
-Add to `/etc/wsl.conf`:
+   ```powershell
+   schtasks /Create /TN "WSL-Ubuntu-keepalive" ^
+     /TR "C:\Windows\System32\wsl.exe -d Ubuntu -u root -e /usr/bin/sleep infinity" ^
+     /SC ONLOGON /RU <MACHINE>\<user> /RL HIGHEST /F
+   ```
 
-```ini
-[boot]
-systemd=true
-command="service cron start"
-```
+   Created this way the task is "Interactive only" - it fires on logon. On a
+   headless box that reboots unattended, open `taskschd.msc`, find the task and
+   tick **Run whether user is logged on or not**, which prompts for the account
+   password. Without that step a reboot silently stops the pipeline.
+3. **Stop WSL reaping the idle VM.** `%USERPROFILE%\.wslconfig`:
 
-Then from PowerShell, keep WSL alive at boot by adding a Task Scheduler task
-running `wsl.exe -d Ubuntu -e true` at startup — that is enough to start the
-distro so cron runs.
+   ```ini
+   [wsl2]
+   vmIdleTimeout=-1
+   ```
 
 ---
 
