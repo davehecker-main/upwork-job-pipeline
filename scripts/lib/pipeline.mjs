@@ -138,6 +138,7 @@ export async function enrichAndRescore(qualified, apiKey, { state = loadState(),
         preferred_qualifications: rec.preferred_qualifications || null,
         screening_questions: rec.screening_questions || [],
         proposals: rec.proposals ?? job.proposals,
+        connects_cost: rec.connects_cost ?? null,
       };
       log(`  ${job.title.slice(0, 46)}: posting ${before} -> ${after} chars`);
     } catch (error) {

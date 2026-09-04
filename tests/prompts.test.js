@@ -296,6 +296,18 @@ describe('slack rendering', () => {
     expect(card).toContain('low budget');
   });
 
+  it('shows what applying will cost, and a location preference against you', () => {
+    const card = renderJobCard({ ...job, connects_cost: 20, preferred_locations: ['Nigeria', 'Egypt'] }, score);
+    expect(card).toContain('20 connects to apply');
+    expect(card).toContain('client prefers Nigeria, Egypt');
+  });
+
+  it('omits both lines when the data is absent', () => {
+    const card = renderJobCard(job, score);
+    expect(card).not.toContain('connects to apply');
+    expect(card).not.toContain('client prefers');
+  });
+
   it('uses a badge that reflects the threshold bands', () => {
     expect(renderJobCard(job, { ...score, score: 90 })).toContain('🟢');
     expect(renderJobCard(job, { ...score, score: SCORE_THRESHOLD })).toContain('🟡');

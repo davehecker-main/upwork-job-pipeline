@@ -19,7 +19,15 @@ export function renderJobCard(job, score) {
     `*<${job.url}|${job.title || 'untitled posting'}>*`,
     `💰 ${job.budget_display}   👤 ${job.client_summary}`,
   ];
-  if (job.proposals != null) lines.push(`📊 ${job.proposals} proposals so far`);
+  const facts = [];
+  if (job.proposals != null) facts.push(`📊 ${job.proposals} proposals so far`);
+  // Connects are what applying actually costs. Knowing it on the card is the
+  // difference between "worth a look" and "worth 20 connects".
+  if (job.connects_cost != null) facts.push(`🎟️ ${job.connects_cost} connects to apply`);
+  if (job.preferred_locations && job.preferred_locations.length) {
+    facts.push(`📍 client prefers ${job.preferred_locations.join(', ')}`);
+  }
+  if (facts.length) lines.push(facts.join('   '));
   lines.push('', `_${score.reasoning}_`);
   if (score.red_flags && score.red_flags.length) {
     lines.push('', `⚠️ ${score.red_flags.join(' · ')}`);
