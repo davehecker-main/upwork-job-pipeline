@@ -11,7 +11,8 @@
     "poll": "node scripts/poll.mjs",
     "run": "node scripts/run-once.mjs",
     "approvals": "node scripts/check-approvals.mjs",
-    "eval": "node scripts/run-eval.mjs"
+    "eval": "node scripts/run-eval.mjs",
+    "drafts": "node scripts/drafts.mjs"
   },
   "devDependencies": {
     "vitest": "^3.2.4"
